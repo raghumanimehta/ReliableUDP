@@ -44,6 +44,19 @@ int main(int argc, char* argv[]) {
     // argc: number of arguments
     // argv: array of C-style strings (arguments)
 
+    if (argc != 2) {
+        cout << "Incorrect number of arguments. Expected: 2. Actual: " << argc << endl;
+        return 1;
+    }
+
+    string filePath = argv[1]; 
+    vector<char> fileData = readFile(filePath);
+
+    if (fileData.empyt()) {
+        cout << "File is empty, nothing to send" << endl;
+    }
+
+    // TODO: immplement the logic to send the data here 
 
     return 0;
 }
