@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     string filePath = argv[1]; 
     vector<char> fileData = readFile(filePath);
 
-    if (fileData.empyt()) {
+    if (fileData.empty()) {
         cout << "File is empty, nothing to send" << endl;
     }
 
