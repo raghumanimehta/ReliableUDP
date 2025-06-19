@@ -10,24 +10,13 @@ uint16_t computeChecksum(struct packet* pkt)
     return 1;
 }
 
-
-// struct packet* makePacket(vector<char>& data, uint32_t seqNo, bool isLast)  
-// {
-//     struct packet* pkt = new struct packet;
-//     pkt->seqNo = seqNo;
-//     pkt->
-//     pkt->checksum = computeChecksum(pkt);
-//     return pkt;
-// }
-
-
-std::vector<char> serializePacket(struct packet* pkt) {
+vector<char> serializePacket(struct packet* pkt) {
     std::vector<char> result;
 
     size_t headerSize = sizeof(uint32_t) + sizeof(uint16_t) + sizeof(uint16_t) + 2 * sizeof(uint8_t);
-    size_t totalSize = headerSize + pkt->payloadLen;
 
-    result.resize(totalSize);
+
+
     char* buffer = result.data();
     size_t offset = 0;
 
@@ -55,4 +44,55 @@ std::vector<char> serializePacket(struct packet* pkt) {
     }
 
     return result;
+}
+
+struct packet * deserializePacket(vector<char>& dataBuffer) 
+{
+    if (dataBuffer.empty()) {
+         return nullptr;
+    }
+
+    struct packet * out = new struct packet;
+    size_t offset = 0;
+
+    const char * buffer = dataBuffer.data();
+
+    uint32_t netSeqNo;
+    memcpy(&netSeqNo, buffer + offset, sizeof(uint32_t));
+    out->seqNo = ntohl(netSeqNo);
+    offset += sizeof(uint32_t);
+    
+    uint16_t netChecksum;
+    memcpy(&netChecksum, buffer + offset, sizeof(uint16_t));
+    out->checksum = ntohs(netChecksum); 
+    offset += sizeof(uint16_t);
+
+    uint16_t netPayloadLen;
+    memcpy(&netPayloadLen, buffer + offset, sizeof(uint16_t));
+    out->payloadLen = ntohs(netPayloadLen);  
+    offset += sizeof(uint16_t);
+
+    uint8_t isLast;
+    memcpy(&isLast, buffer + offset, sizeof(uint8_t));
+    out->isLast = isLast;
+    offset += sizeof(uint8_t);
+
+    uint8_t flag;
+    memcpy(&flag, buffer + offset, sizeof(uint8_t));
+    out->flag = flag;
+    offset += sizeof(uint8_t);
+
+    if (out->payloadLen > MAX_PAYLOAD_SIZE) {
+        delete out;
+        return nullptr;
+    }
+
+    if (offset + out->payloadLen <= dataBuffer.size()) {
+        memcpy(out->payload, buffer + offset, out->payloadLen);
+    } else {
+        delete out;
+        return nullptr;
+    }
+
+    return out;
 }
