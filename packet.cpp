@@ -10,6 +10,31 @@ uint16_t computeChecksum(struct packet* pkt)
     return 1;
 }
 
+struct packet* makePacket(vector<char>& packetData) 
+// Function makes a packet and returns it
+// This function checks the size of the data and returns null if the data size is more than max payload length
+{
+    uint16_t payloadLen = packetData.size();
+    if (payloadLen > MAX_PAYLOAD_SIZE) return nullptr;
+
+    struct packet* out = new struct packet();
+    
+    // Initialize all fields to default values
+    out->seqNo = 0;
+    out->checksum = 0;
+    out->payloadLen = payloadLen;
+    out->isLast = 0;
+    out->flag = 0;
+    // Zero out the payload buffer first
+    memset(&(out->payload), 0, MAX_PAYLOAD_SIZE);
+    
+    // Copy the actual payload data
+    char* buffer = packetData.data();
+    memcpy(&(out->payload), buffer, payloadLen);
+    
+    return out; 
+}
+
 vector<char> serializePacket(struct packet* pkt) {
     std::vector<char> result;
 
@@ -49,7 +74,7 @@ vector<char> serializePacket(struct packet* pkt) {
 struct packet * deserializePacket(vector<char>& dataBuffer) 
 {
     if (dataBuffer.empty()) {
-         return nullptr;
+        return nullptr;
     }
 
     struct packet * out = new struct packet;
