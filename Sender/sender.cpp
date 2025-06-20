@@ -43,10 +43,13 @@ Currently basic version only. Keeps sending till the buffer is not empty.
 The method is responsible for keeping track of the size of the data to send.
 */
 {
-    if (socketFd < 0) {
+    if (this->socketFd < 0) {
         // Some error 
         return false;  
     }
+
+
+
 
     
     
