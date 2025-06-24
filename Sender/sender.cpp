@@ -16,7 +16,7 @@
 #include <string>
 #include <cstring>    
 #include "../packet.hpp"
-
+#include "../logger.cpp"
 
 using namespace std;
 
@@ -45,9 +45,41 @@ The method is responsible for keeping track of the size of the data to send.
 {
     if (this->socketFd < 0) {
         // Some error 
+        LOG_ERROR("invalid sockFd in sendFile");
         return false;  
     }
 
+    if (fileData.empty()) {
+        LOG_WARNING("empty file");
+        return true;
+    }
+
+    size_t fileSize = fileData.size();
+    size_t remainingSize = fileSize;
+    size_t offset = 0;
+    uint32_t seqNo = 0;
+    
+    while (remainingSize > MAX_PAYLOAD_SIZE) {
+        size_t thisSize = min<size_t>(MAX_PAYLOAD_SIZE, remainingSize);
+        remainingSize -= thisSize;
+        vector<char> packetData(thisSize);
+        std::copy(fileData.begin() + offset, fileData.begin() + offset + thisSize, packetData.begin());
+        offset += thisSize;
+        struct packet * pkt = makePacket(packetData); // malloc here
+        pkt->seqNo = seqNo++;
+        if (remainingSize <= 0) {
+            pkt->isLast = 1;
+        } 
+        vector<char> serializedPkt = serializePacket(pkt);
+
+        computeChecksum(serializedPkt);
+
+        if (pkt != nullptr) {
+            delete pkt;
+            pkt = nullptr;
+        }
+
+    }
 
 
 

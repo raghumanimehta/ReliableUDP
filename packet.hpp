@@ -16,6 +16,11 @@ struct packet {
     char payload[MAX_PAYLOAD_SIZE];
 };
 
+struct packet* makePacket(std::vector<char>& packetData);
+std::vector<char> serializePacket(struct packet* pkt);
+struct packet * deserializePacket(vector<char>& dataBuffer);
+void computeChecksum(std::vector<char> serializedPkt);
+
 
 #endif // PACKET_HPP
                             

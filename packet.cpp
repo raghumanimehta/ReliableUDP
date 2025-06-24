@@ -5,9 +5,12 @@
 using namespace std;
 
 
-uint16_t computeChecksum(struct packet* pkt) 
+void computeChecksum(vector<char>& serializedPkt) 
+/* 
+Computes and stores the checksum at the right offset in the serialized packet 
+*/
 {
-    return 1;
+    return;
 }
 
 struct packet* makePacket(vector<char>& packetData) 
@@ -36,12 +39,13 @@ struct packet* makePacket(vector<char>& packetData)
 }
 
 vector<char> serializePacket(struct packet* pkt) {
-    std::vector<char> result;
-
+    // Calculate total size needed
     size_t headerSize = sizeof(uint32_t) + sizeof(uint16_t) + sizeof(uint16_t) + 2 * sizeof(uint8_t);
-
-
-
+    size_t totalSize = headerSize + pkt->payloadLen;
+    
+    // Allocate the right amount of space
+    std::vector<char> result(totalSize);
+    
     char* buffer = result.data();
     size_t offset = 0;
 
