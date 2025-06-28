@@ -9,8 +9,7 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 
 class Sender {
 private:
-    std::string destinationIP; 
-    int destinationPort;
+    struct sockaddr_in dst;
     int socketFd;
 
 public:

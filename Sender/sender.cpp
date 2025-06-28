@@ -21,9 +21,13 @@
 using namespace std;
 
 Sender::Sender(const std::string& destIp, const int port)
-    : destinationIP(destIp), destinationPort(port), socketFd(-1) 
+    : socketFd(-1) 
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
+    memset(&dst, 0, sizeof(dst));
+    dst.sin_family = AF_INET;                    // use IPv4
+    dst.sin_port   = htons(12345);               // The receiver will always listen on this port when both ends of the program are running 
+    inet_pton(AF_INET, destIp.c_str(), &dst.sin_addr); // destination IP
     if (socketFd == -1) {
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }   
@@ -59,24 +63,28 @@ The method is responsible for keeping track of the size of the data to send.
     size_t offset = 0;
     uint32_t seqNo = 0;
     
-    while (remainingSize > MAX_PAYLOAD_SIZE) {
+    while (remainingSize > 0) {
+
         size_t thisSize = min<size_t>(MAX_PAYLOAD_SIZE, remainingSize);
         remainingSize -= thisSize;
         vector<char> packetData(thisSize);
         std::copy(fileData.begin() + offset, fileData.begin() + offset + thisSize, packetData.begin());
         offset += thisSize;
-        struct packet * pkt = makePacket(packetData); // malloc here
+        auto pkt = makePacket(packetData); 
+        if (pkt == nullptr) {
+            throw std::runtime_error("make packet returned nullptr");
+        }
         pkt->seqNo = seqNo++;
         if (remainingSize <= 0) {
             pkt->isLast = 1;
         } 
-        vector<char> serializedPkt = serializePacket(pkt);
+        vector<char> serializedPkt = serializePacket(*pkt);
 
-        computeChecksum(serializedPkt);
+        ssize_t sentBytes = sendto(socketFd, serializedPkt.data(), serializedPkt.size(), 0,
+                           (struct sockaddr*)&dst, sizeof(dst));
 
-        if (pkt != nullptr) {
-            delete pkt;
-            pkt = nullptr;
+        if (sentBytes == -1) {
+            LOG_ERROR("Failed to send packet: " + std::string(strerror(errno)));
         }
 
     }
