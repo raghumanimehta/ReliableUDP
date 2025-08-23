@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include "sender.hpp"
 /* 
 Main file for the Sender application.
 This file contains the main function that initializes the application and starts the event loop.
@@ -54,9 +55,27 @@ int main(int argc, char* argv[]) {
 
     if (fileData.empty()) {
         cout << "File is empty, nothing to send" << endl;
+        return 1;  // Exit if no data to send
     }
 
-    // TODO: immplement the logic to send the data here 
+    // Create sender object with destination IP and port (hard coded to be changed)
+    try {
+        Sender sender("127.0.0.1", 12345);  // localhost, port 12345 
+        
+        // Send the file
+        bool success = sender.sendFile(fileData);
+        
+        if (success) {
+            cout << "File sent successfully!" << endl;
+        } else {
+            cout << "Failed to send file!" << endl;
+            return 1;
+        }
+        
+    } catch (const std::exception& e) {
+        cout << "Error: " << e.what() << endl;
+        return 1;
+    }
 
     return 0;
 }

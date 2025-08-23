@@ -24,13 +24,14 @@ Sender::Sender(const std::string& destIp, const int port)
     : socketFd(-1) 
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
-    memset(&dst, 0, sizeof(dst));
-    dst.sin_family = AF_INET;                    // use IPv4
-    dst.sin_port   = htons(12345);               // The receiver will always listen on this port when both ends of the program are running 
-    inet_pton(AF_INET, destIp.c_str(), &dst.sin_addr); // destination IP
     if (socketFd == -1) {
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
-    }   
+    }
+    
+    memset(&dst, 0, sizeof(dst));
+    dst.sin_family = AF_INET;                    // use IPv4
+    dst.sin_port   = htons(port);              
+    inet_pton(AF_INET, destIp.c_str(), &dst.sin_addr); // destination IP
 }
 
 Sender::~Sender() 
@@ -85,13 +86,11 @@ The method is responsible for keeping track of the size of the data to send.
 
         if (sentBytes == -1) {
             LOG_ERROR("Failed to send packet: " + std::string(strerror(errno)));
+            return false;
         }
 
     }
 
+    return true; 
 
-
-    
-    
-    
 }

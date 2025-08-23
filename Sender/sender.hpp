@@ -6,6 +6,9 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 
 #include <string>
 #include <vector>  
+#include <sys/socket.h>    // Add this
+#include <netinet/in.h>    // Keep this
+#include <arpa/inet.h>     // Add this too
 
 class Sender {
 private:
