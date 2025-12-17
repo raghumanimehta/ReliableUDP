@@ -18,7 +18,7 @@ struct packet {
 
 std::unique_ptr<packet> makePacket(std::vector<char>& packetData);
 std::vector<char> serializePacket(const struct packet& pkt);
-std::unique_ptr<packet> deserializePacket(vector<char>& dataBuffer);
+std::unique_ptr<packet> deserializePacket(std::vector<char>& dataBuffer);
 
 #endif // PACKET_HPP
                             

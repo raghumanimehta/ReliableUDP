@@ -6,11 +6,12 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 
 #include <string>
 #include <vector>  
-#include <sys/socket.h>    // Add this
-#include <netinet/in.h>    // Keep this
-#include <arpa/inet.h>     // Add this too
+#include <sys/socket.h>   
+#include <netinet/in.h>    
+#include <arpa/inet.h>     
 
-class Sender {
+class Sender 
+{
 private:
     struct sockaddr_in dst;
     int socketFd;

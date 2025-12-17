@@ -55,7 +55,7 @@ vector<char> serializePacket(const struct packet& pkt) {
     std::memcpy(buffer + offset, &pkt.flag, sizeof(uint8_t));   
     offset += sizeof(uint8_t);
 
-    if (pkt.payloadLen > 0 && pkt.payload) {
+    if (pkt.payloadLen > 0) {
         std::memcpy(buffer + offset, pkt.payload, pkt.payloadLen);
     }
 
