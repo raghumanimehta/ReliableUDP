@@ -25,6 +25,7 @@ Sender::Sender(const std::string& destIp, const int port)
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd == -1) {
+        LOG_ERROR("Failed to create socket: " + std::string(strerror(errno)));
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }
     
@@ -32,6 +33,7 @@ Sender::Sender(const std::string& destIp, const int port)
     dst.sin_family = AF_INET;                    // use IPv4
     dst.sin_port   = htons(port);              
     inet_pton(AF_INET, destIp.c_str(), &dst.sin_addr); // destination IP
+    LOG_INFO(std::string("Sender created with destination: ") + destIp + ":" + std::to_string(port));
 }
 
 Sender::~Sender() 
@@ -64,8 +66,8 @@ The method is responsible for keeping track of the size of the data to send.
     size_t offset = 0;
     uint32_t seqNo = 0;
     
-    while (remainingSize > 0) {
-
+    while (remainingSize > 0)
+    {
         size_t thisSize = min<size_t>(MAX_PAYLOAD_SIZE, remainingSize);
         remainingSize -= thisSize;
         vector<char> packetData(thisSize);
@@ -88,7 +90,6 @@ The method is responsible for keeping track of the size of the data to send.
             LOG_ERROR("Failed to send packet: " + std::string(strerror(errno)));
             return false;
         }
-
     }
 
     return true; 

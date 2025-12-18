@@ -34,4 +34,3 @@
 
 ---
 
-Stay tuned for more as the project evolves!
