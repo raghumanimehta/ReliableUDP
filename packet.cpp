@@ -1,4 +1,5 @@
 #include "packet.hpp"
+#include <cstring>
 #include <arpa/inet.h>  // For htonl, htons functions
 
 

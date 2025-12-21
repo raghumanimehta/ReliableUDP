@@ -15,12 +15,14 @@
 #include <iostream>    
 #include <string>
 #include <cstring>    
+#include <poll.h>
+#include <fstream>
 #include "../packet.hpp"
 #include "../logger.cpp"
 
 using namespace std;
 
-Receiver::Receiver(const int port)
+Receiver::Receiver()
     : socketFd(-1) 
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -28,7 +30,8 @@ Receiver::Receiver(const int port)
         LOG_ERROR("Failed to create socket: " + std::string(strerror(errno)));
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }
-    struct sockaddr_in addr = {0};
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);        
     addr.sin_addr.s_addr = INADDR_ANY;  
@@ -36,6 +39,8 @@ Receiver::Receiver(const int port)
         LOG_ERROR("bind failed: " + std::string(strerror(errno)));
         throw std::runtime_error("bind failed: " + std::string(strerror(errno)));
     }
+    origin = {};
+    isConnected = false;
     LOG_INFO("Receiver created and bound to port: " + std::to_string(PORT));
 }
 
@@ -49,6 +54,56 @@ Receiver::~Receiver()
 
 bool Receiver::receiveFile()
 {
+    char buf[MAX_PAYLOAD_SIZE];
+    struct pollfd pfd;
+    pfd.fd = socketFd;
+    pfd.events = POLLIN;
 
-    while ()
+    LOG_INFO("Waiting for connection (first packet)...");
+
+    while (!isConnected)
+    {  
+        int ret = poll(&pfd, 1, 1000); // 1 second timeout
+
+        if (ret < 0) {
+            if (errno == EINTR) continue; // Signal interruption, retry
+            LOG_ERROR("Poll error: " + std::string(strerror(errno)));
+            return false; 
+        }
+
+        // If data is ready to read
+        if (ret > 0 && (pfd.revents & POLLIN)) {
+            isConnected = true; 
+            break; 
+        }
+        
+        // If ret == 0 (timeout), the loop continues automatically
+    }
+
+    
+    socklen_t addrLen = sizeof(origin);
+    ssize_t recvBytes = recvfrom(socketFd, buf, MAX_PAYLOAD_SIZE, 0,
+                                (struct sockaddr*)&origin, &addrLen);
+
+    if (recvBytes < 0) {
+        LOG_ERROR("Failed to receive first packet: " + std::string(strerror(errno)));
+        return false;
+    }
+
+    LOG_INFO("Connection established. Received " + std::to_string(recvBytes) + " bytes.");
+
+    // Write the raw received data to output.txt to verify UDP transmission
+    std::ofstream outFile("output.txt", std::ios::binary);
+    if (outFile.is_open()) {
+        outFile.write(buf, recvBytes);
+        outFile.close();
+        LOG_INFO("Successfully wrote received data to output.txt");
+    } else {
+        LOG_ERROR("Failed to open output.txt for writing");
+    }
+
+    // Now you can process 'buf' (deserialize, check flags, etc.)
+    // and enter your main file receiving loop.
+    
+    return true;
 }

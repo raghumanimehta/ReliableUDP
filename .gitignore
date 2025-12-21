@@ -1,0 +1,8 @@
+*.o
+*.d
+
+bin/
+
+output.txt
+.idea/
+.vscode

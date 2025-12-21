@@ -15,9 +15,10 @@ class Receiver {
 private:
     struct sockaddr_in origin;
     int socketFd;
+    bool isConnected;
 
 public:
-    Receiver(const int port); 
+    Receiver(); 
     
     ~Receiver();
 

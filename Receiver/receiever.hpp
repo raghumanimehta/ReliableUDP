@@ -15,6 +15,7 @@ class Receiver
 private:
     struct sockaddr_in from;
     int socketFd;
+    bool isConnected;
 
 public:
     Receiver(const std::string& destIp, const int port);
