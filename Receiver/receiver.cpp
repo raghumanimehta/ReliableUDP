@@ -64,7 +64,6 @@ bool Receiver::receiveFile()
     while (!isConnected)
     {  
         int ret = poll(&pfd, 1, 1000); // 1 second timeout
-
         if (ret < 0) {
             if (errno == EINTR) continue; // Signal interruption, retry
             LOG_ERROR("Poll error: " + std::string(strerror(errno)));
@@ -102,8 +101,5 @@ bool Receiver::receiveFile()
         LOG_ERROR("Failed to open output.txt for writing");
     }
 
-    // Now you can process 'buf' (deserialize, check flags, etc.)
-    // and enter your main file receiving loop.
-    
     return true;
 }
