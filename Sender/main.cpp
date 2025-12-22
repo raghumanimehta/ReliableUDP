@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
 
     // Create sender object with destination IP and port (hard coded to be changed)
     try {
-        Sender sender("127.0.0.1", 12345);  // localhost, port 12345 
+        Sender sender("127.0.0.1", 8080);  // localhost, port 12345 
         
         // Send the file
         bool success = sender.sendFile(fileData);
