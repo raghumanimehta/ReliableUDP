@@ -35,7 +35,7 @@ Receiver::Receiver()
     addr.sin_family = AF_INET;
     addr.sin_port = htons(PORT);        
     addr.sin_addr.s_addr = INADDR_ANY;  
-    if (bind(socketFd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+    if (::bind(socketFd, (struct sockaddr *)&addr, sizeof(addr)) ==  -1) {
         LOG_ERROR("bind failed: " + std::string(strerror(errno)));
         throw std::runtime_error("bind failed: " + std::string(strerror(errno)));
     }
