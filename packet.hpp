@@ -7,6 +7,8 @@
 #include <memory> 
 
 const uint32_t MAX_PAYLOAD_SIZE = 1024; 
+const uint32_t HEADER_SIZE  = 8;  // size of deserialized struct excluding the payload
+const uint32_t MAX_PACKET_SIZE = 1032; 
 
 struct packet {
     uint32_t seqNo; 

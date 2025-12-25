@@ -35,6 +35,7 @@ $(BIN_DIR):
 
 clean:
 	rm -f $(SENDER_BIN) $(RECEIVER_BIN)
+	rm -f output.txt
 	find . -name '*.o' -delete
 	find . -name '*.d' -delete
 

@@ -32,8 +32,7 @@ unique_ptr<packet> makePacket(vector<char>& packetData)
 
 vector<char> serializePacket(const struct packet& pkt) {
     // Calculate total size needed
-    size_t headerSize = sizeof(uint32_t) + sizeof(uint16_t) + 2 * sizeof(uint8_t);
-    size_t totalSize = headerSize + pkt.payloadLen;
+    size_t totalSize = HEADER_SIZE + pkt.payloadLen;
     
     // Allocate the right amount of space
     std::vector<char> result(totalSize);
