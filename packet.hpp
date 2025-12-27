@@ -23,7 +23,7 @@ struct packet {
     char payload[MAX_PAYLOAD_SIZE];
 };
 
-std::unique_ptr<packet> makePacket(std::vector<char>& packetData);
+std::unique_ptr<packet> makePacket(std::vector<char>& packetData, uint32_t seqNo, uint8_t flag);
 std::unique_ptr<packet> makeEmptyPacket();
 std::vector<char> serializePacket(const struct packet& pkt);
 std::unique_ptr<packet> deserializePacket(std::vector<char>& dataBuffer);

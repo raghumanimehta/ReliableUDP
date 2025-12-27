@@ -6,16 +6,16 @@
 using namespace std;
 
 
-unique_ptr<packet> makePacket(vector<char>& packetData) 
+unique_ptr<packet> makePacket(vector<char>& packetData, uint32_t seqNo, uint8_t flag) 
 {
     uint16_t payloadLen = packetData.size();
     if (payloadLen > MAX_PAYLOAD_SIZE) return nullptr;
 
     auto out = make_unique<packet>();
     
-    out->seqNo = 0;
+    out->seqNo = seqNo;
     out->payloadLen = payloadLen;
-    out->flag = 0;
+    out->flag = flag;
     memset(&(out->payload), 0, MAX_PAYLOAD_SIZE);
     
     char* buffer = packetData.data();

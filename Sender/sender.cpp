@@ -73,14 +73,11 @@ The method is responsible for keeping track of the size of the data to send.
         vector<char> packetData(thisSize);
         std::copy(fileData.begin() + offset, fileData.begin() + offset + thisSize, packetData.begin());
         offset += thisSize;
-        auto pkt = makePacket(packetData); 
+        uint8_t flag = (remainingSize <= 0) ? FLAG_FIN : FLAG_DATA;
+        auto pkt = makePacket(packetData, seqNo, flag); 
         if (pkt == nullptr) {
             LOG_ERROR("makePacket returned nullptr");
             return false;
-        }
-        pkt->seqNo = seqNo;  
-        if (remainingSize <= 0) {
-            pkt->flag = FLAG_FIN;
         } 
         if (!sendPacket(*pkt)) {
             return false;
