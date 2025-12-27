@@ -41,7 +41,6 @@ Receiver::Receiver()
         throw std::runtime_error("bind failed: " + std::string(strerror(errno)));
     }
     origin = {};
-    isConnected = false;
     LOG_INFO("Receiver created and bound to port: " + std::to_string(PORT));
 }
 
@@ -62,7 +61,7 @@ bool Receiver::receiveFile()
 
     LOG_INFO("Waiting for connection (first packet)...");
 
-    while (!isConnected)
+    while (true)
     {  
         int ret = poll(&pfd, 1, 1000); // 1 second timeout
         if (ret < 0) {
@@ -71,13 +70,9 @@ bool Receiver::receiveFile()
             return false; 
         }
 
-        // If data is ready to read
         if (ret > 0 && (pfd.revents & POLLIN)) {
-            isConnected = true; 
             break; 
-        }
-        
-        // If ret == 0 (timeout), the loop continues automatically
+        }    
     }
 
     

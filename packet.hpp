@@ -14,6 +14,7 @@ constexpr uint8_t FLAG_DATA = 0x00;
 constexpr uint8_t FLAG_ACK  = 0x01;
 constexpr uint8_t FLAG_SYN  = 0x02;
 constexpr uint8_t FLAG_FIN  = 0x04;
+constexpr uint8_t FLAG_SYN_ACK  = FLAG_SYN | FLAG_ACK;
 
 struct packet {
     uint32_t    seqNo; 
@@ -23,6 +24,7 @@ struct packet {
 };
 
 std::unique_ptr<packet> makePacket(std::vector<char>& packetData);
+std::unique_ptr<packet> makeEmptyPacket();
 std::vector<char> serializePacket(const struct packet& pkt);
 std::unique_ptr<packet> deserializePacket(std::vector<char>& dataBuffer);
 

@@ -24,6 +24,16 @@ unique_ptr<packet> makePacket(vector<char>& packetData)
     return out; 
 }
 
+unique_ptr<packet> makeEmptyPacket() 
+{
+    auto out = make_unique<packet>(); 
+    out->seqNo = 0;
+    out->payloadLen = 0;
+    out->flag = 0;
+    memset(&(out->payload), 0, MAX_PAYLOAD_SIZE);
+    return out; 
+}
+
 vector<char> serializePacket(const struct packet& pkt) {
     size_t totalSize = HEADER_SIZE + pkt.payloadLen;
     std::vector<char> result(totalSize);

@@ -10,12 +10,11 @@ Receiver class. The class encapsulates the logic for receiving files using UDP.
 
 #define PORT 8080 
 
-class Receiver {
-
+class Receiver 
+{
 private:
     struct sockaddr_in origin;
     int socketFd;
-    bool isConnected;
 
 public:
     Receiver(); 
