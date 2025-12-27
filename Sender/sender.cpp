@@ -79,7 +79,7 @@ The method is responsible for keeping track of the size of the data to send.
         }
         pkt->seqNo = seqNo++;
         if (remainingSize <= 0) {
-            pkt->isLast = 1;
+            pkt->flag = FLAG_FIN;
         } 
         vector<char> serializedPkt = serializePacket(*pkt);
 
