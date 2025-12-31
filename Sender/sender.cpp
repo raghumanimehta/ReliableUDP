@@ -24,7 +24,8 @@ Sender::Sender(const std::string& destIp, const int port)
     : socketFd(-1), state(SenderState::IDLE) 
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (socketFd == -1) {
+    if (socketFd == -1)
+    {
         LOG_ERROR("Failed to create socket: " + std::string(strerror(errno)));
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }
@@ -51,12 +52,24 @@ The method is responsible for keeping track of the size of the data to send.
 */
 {
     if (this->socketFd < 0) {
-        // Some error 
         LOG_ERROR("invalid sockFd in sendFile");
         return false;  
     }
 
-    if (fileData.empty()) {
+    if (!this->handshake())
+    {
+        LOG_ERROR("Handshake failed");
+        return false;
+    }
+
+    if (this->state != SenderState::CONNECTED) 
+    {
+        LOG_ERROR("State must be CONNECTED");
+        return false;
+    }
+
+    if (fileData.empty()) 
+    {
         LOG_WARNING("empty file");
         return true;
     }
@@ -75,11 +88,13 @@ The method is responsible for keeping track of the size of the data to send.
         offset += thisSize;
         uint8_t flag = (remainingSize <= 0) ? FLAG_FIN : FLAG_DATA;
         auto pkt = makePacket(packetData, seqNo, flag); 
-        if (pkt == nullptr) {
+        if (pkt == nullptr) 
+        {
             LOG_ERROR("makePacket returned nullptr");
             return false;
         } 
-        if (!sendPacket(*pkt)) {
+        if (!sendPacket(*pkt)) 
+        {
             return false;
         }
 
@@ -92,7 +107,8 @@ The method is responsible for keeping track of the size of the data to send.
 
 bool Sender::handshake()
 {
-    if (this->socketFd < 0) {
+    if (this->socketFd < 0) 
+    {
         LOG_ERROR("invalid sockFd in sendFile");
         return false;  
     }   
@@ -112,16 +128,19 @@ bool Sender::handshake()
         return false;
     }
 
-    if (!sendPacket(*pkt)) {
+    if (!sendPacket(*pkt)) 
+    {
         return false;
     }
     this->state = SenderState::SYN_SENT;
 
-    if (!waitForSynAck()) {
+    if (!waitForSynAck()) 
+    {
         return false;
     }
 
-    if (!sendHandshakeAck()) {
+    if (!sendHandshakeAck()) 
+    {
         return false;
     }
 
@@ -141,7 +160,8 @@ bool Sender::waitForSynAck()
     while (this->state == SenderState::SYN_SENT) 
     {  
         int ret = poll(&pfd, 1, 1000); // 1 second timeout
-        if (ret < 0) {
+        if (ret < 0) 
+        {
             if (errno == EINTR) continue;
             LOG_ERROR("Poll error: " + std::string(strerror(errno)));
             return false; 
@@ -149,7 +169,8 @@ bool Sender::waitForSynAck()
 
         if (ret > 0 && (pfd.revents & POLLIN)) {
             auto pkt = readPkt();
-            if (pkt == nullptr) {
+            if (pkt == nullptr) 
+            {
                 LOG_ERROR("Failed to read packet during handshake");
                 retries++;
                 continue;

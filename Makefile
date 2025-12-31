@@ -1,6 +1,6 @@
-# C++17 Makefile: builds two executables into bin/
+# C++23 Makefile: builds two executables into bin/
 CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -O2 -MMD -MP
+CXXFLAGS := -std=c++23 -Wall -Wextra -Werror -O2 -MMD -MP
 
 BIN_DIR := bin
 SENDER_BIN := $(BIN_DIR)/sender

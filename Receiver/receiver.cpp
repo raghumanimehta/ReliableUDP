@@ -41,6 +41,7 @@ Receiver::Receiver()
         throw std::runtime_error("bind failed: " + std::string(strerror(errno)));
     }
     origin = {};
+    state = ReceieverState::IDLE;
     LOG_INFO("Receiver created and bound to port: " + std::to_string(PORT));
 }
 
@@ -59,7 +60,7 @@ bool Receiver::receiveFile()
     pfd.fd = socketFd;
     pfd.events = POLLIN;
 
-    LOG_INFO("Waiting for connection (first packet)...");
+    LOG_INFO("State: IDLE, Waiting for connection (first packet)...");
 
     while (true)
     {  
@@ -105,4 +106,9 @@ bool Receiver::receiveFile()
     }
 
     return true;
+}
+
+bool handshake() 
+{
+
 }
