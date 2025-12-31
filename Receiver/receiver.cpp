@@ -56,10 +56,21 @@ Receiver::~Receiver()
 
 bool Receiver::receiveFile()
 {
-   while (!handshake()) 
-   {
-    continue;
-   }     
+   if (!handshake()) return false;      
+    const uint64_t TIMEOUT_MS = 1000;
+    const uint8_t RETRIES = 10;
+   if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    {
+        LOG_ERROR("Timeout or error waiting for SYN");
+        return false;
+    }
+
+    auto pkt = readPkt(socketFd, origin);
+    if (pkt == nullptr) 
+    {
+        LOG_INFO("Null packet received");
+        return false;
+    }
    char recvPayload[MAX_PAYLOAD_SIZE];
    memcpy(recvPayload, pkt->payload, pkt->payloadLen);
    // TODO: Handle the checks on the packet here
@@ -81,6 +92,7 @@ bool Receiver::receiveFile()
 
     return true;
 }
+
 
 bool Receiver::handshake() 
 {
@@ -118,5 +130,30 @@ bool Receiver::handshake()
     sendPkt->seqNo == SYN_SEQNO + 1;
     if (!sendPacket(this->socketFd, this->origin, *pkt)) return false;
     this->state = ReceieverState::ACK_SENT;
+
+    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    {
+        LOG_ERROR("Timeout or error waiting for SYN");
+        return false;
+    }
+
+    auto pkt = readPkt(socketFd, origin);
+    if (pkt == nullptr) 
+    {
+        LOG_INFO("Null packet received");
+        return false;
+    }
+
+    if (pkt->flag == FLAG_ACK && pkt->seqNo == SYN_SEQNO + 1) 
+    {
+        LOG_INFO("SYN received");
+        this->state = ReceieverState::SYN_RECV;
+    }  else 
+    {
+        LOG_ERROR("The sequence number or flag did not match");
+        return false;
+    }
+    this->state = ReceieverState::CONNECTED;
+    return true;
 
 }
