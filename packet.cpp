@@ -59,6 +59,39 @@ vector<char> serializePacket(const struct packet& pkt) {
     return result;
 }
 
+#include <sys/socket.h>
+#include <cerrno>
+#include <string>
+#include "logger.cpp"
+
+bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt) {
+    std::vector<char> serializedPkt = serializePacket(pkt);
+    ssize_t sentBytes = sendto(socketFd, serializedPkt.data(), serializedPkt.size(), 0,
+                        (const struct sockaddr*)&dst, sizeof(dst));
+    if (sentBytes == -1) {
+        LOG_ERROR("Failed to send packet: " + std::string(strerror(errno)));
+        return false;
+    }
+    return true;
+}
+
+unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in origin) 
+{
+    char buf[MAX_PACKET_SIZE];
+    socklen_t addrLen = sizeof(origin);
+    ssize_t recvBytes = recvfrom(socketFd, buf, MAX_PACKET_SIZE, 0,
+                                (struct sockaddr*)&(origin), &addrLen);
+
+    if (recvBytes < 0) 
+    {
+        LOG_ERROR("Failed to receive first packet: " + std::string(strerror(errno)));
+        return nullptr; 
+    }
+
+    vector<char> data(buf, buf + recvBytes);
+    auto pkt = deserializePacket(data);
+    return pkt;
+}
 unique_ptr<packet> deserializePacket(vector<char>& dataBuffer) 
 {
     if (dataBuffer.empty()) {

@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include "../packet.hpp"
 #include "../logger.cpp"
+#include "../utils.hpp"
 
 using namespace std;
 
@@ -55,60 +56,67 @@ Receiver::~Receiver()
 
 bool Receiver::receiveFile()
 {
-    char buf[MAX_PACKET_SIZE];
-    struct pollfd pfd;
-    pfd.fd = socketFd;
-    pfd.events = POLLIN;
+   while (!handshake()) 
+   {
+    continue;
+   }     
+   char recvPayload[MAX_PAYLOAD_SIZE];
+   memcpy(recvPayload, pkt->payload, pkt->payloadLen);
+   // TODO: Handle the checks on the packet here
+   
+   LOG_INFO("Connection established. Received " + std::to_string(recvBytes) + " bytes.");
 
-    LOG_INFO("State: IDLE, Waiting for connection (first packet)...");
-
-    while (true)
-    {  
-        int ret = poll(&pfd, 1, 1000); // 1 second timeout
-        if (ret < 0) {
-            if (errno == EINTR) continue; // Signal interruption, retry
-            LOG_ERROR("Poll error: " + std::string(strerror(errno)));
-            return false; 
-        }
-
-        if (ret > 0 && (pfd.revents & POLLIN)) {
-            break; 
-        }    
-    }
-
-    
-    socklen_t addrLen = sizeof(origin);
-    ssize_t recvBytes = recvfrom(socketFd, buf, MAX_PACKET_SIZE, 0,
-                                (struct sockaddr*)&origin, &addrLen);
-
-    if (recvBytes < 0) {
-        LOG_ERROR("Failed to receive first packet: " + std::string(strerror(errno)));
-        return false;
-    }
-
-    vector<char> data(buf, buf + recvBytes);
-    auto pkt = deserializePacket(data);
-    char recvPayload[MAX_PAYLOAD_SIZE];
-    memcpy(recvPayload, pkt->payload, pkt->payloadLen);
-    // TODO: Handle the checks on the packet here
-
-
-    LOG_INFO("Connection established. Received " + std::to_string(recvBytes) + " bytes.");
-
-    // Write the raw received data to output.txt to verify UDP transmission
-    std::ofstream outFile("output.txt", std::ios::binary);
-    if (outFile.is_open()) {
+   // Write the raw received data to output.txt to verify UDP transmission
+   std::ofstream outFile("output.txt", std::ios::binary);
+   if (outFile.is_open())
+   {    
         outFile.write(recvPayload, pkt->payloadLen);
-        outFile.close();
-        LOG_INFO("Successfully wrote received data to output.txt");
-    } else {
-        LOG_ERROR("Failed to open output.txt for writing");
-    }
+       outFile.close();
+       LOG_INFO("Successfully wrote received data to output.txt");
+   }
+   else
+   {
+       LOG_ERROR("Failed to open output.txt for writing");
+   }
 
     return true;
 }
 
-bool handshake() 
+bool Receiver::handshake() 
 {
+    char buf[MAX_PACKET_SIZE];
+    LOG_INFO("State: IDLE, Waiting for connection (first packet)...");
+
+    const uint64_t TIMEOUT_MS = 1000;
+    const uint8_t RETRIES = 10;
+    // ADD a loop here if the check for the FLAG and SEQ no fails
+    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    {
+        LOG_ERROR("Timeout or error waiting for SYN");
+        return false;
+    }
+
+    auto pkt = readPkt(socketFd, origin);
+    if (pkt == nullptr) 
+    {
+        LOG_INFO("Null packet received");
+        return false;
+    }
+
+    if (pkt->flag == FLAG_SYN && pkt->seqNo == SYN_SEQNO) 
+    {
+        LOG_INFO("SYN received");
+        this->state = ReceieverState::SYN_RECV;
+    }  else 
+    {
+        LOG_ERROR("The sequence number or flag did not match");
+        return false;
+    }
+
+    auto sendPkt = makeEmptyPacket();
+    sendPkt->flag = FLAG_SYN_ACK;
+    sendPkt->seqNo == SYN_SEQNO + 1;
+    if (!sendPacket(this->socketFd, this->origin, *pkt)) return false;
+    this->state = ReceieverState::ACK_SENT;
 
 }

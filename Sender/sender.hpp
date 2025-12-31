@@ -30,8 +30,6 @@ private:
     SenderState state; 
 
     bool handshake();
-    std::unique_ptr<packet> readPkt();
-    bool sendPacket(const packet& pkt);
     bool waitForSynAck();
     bool sendHandshakeAck();
 

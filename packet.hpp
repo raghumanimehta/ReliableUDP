@@ -5,10 +5,13 @@
 #include <vector> 
 #include <cassert>
 #include <memory> 
+#include <netinet/in.h> 
 
 const uint32_t MAX_PAYLOAD_SIZE = 1024; 
 const uint32_t HEADER_SIZE  = 7;        // size of deserialized struct excluding the payload
 const uint32_t MAX_PACKET_SIZE = MAX_PAYLOAD_SIZE + HEADER_SIZE;
+
+const uint8_t SYN_SEQNO = 0;
 
 constexpr uint8_t FLAG_DATA = 0x00;
 constexpr uint8_t FLAG_ACK  = 0x01;
@@ -27,6 +30,8 @@ std::unique_ptr<packet> makePacket(std::vector<char>& packetData, uint32_t seqNo
 std::unique_ptr<packet> makeEmptyPacket();
 std::vector<char> serializePacket(const struct packet& pkt);
 std::unique_ptr<packet> deserializePacket(std::vector<char>& dataBuffer);
+bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt);
+std::unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in dst);
 
 #endif 
                             

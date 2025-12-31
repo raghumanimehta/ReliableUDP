@@ -17,6 +17,7 @@
 #include <cstring>    
 #include "../packet.hpp"
 #include "../logger.cpp"
+#include "../utils.cpp"
 
 using namespace std;
 
@@ -93,11 +94,10 @@ The method is responsible for keeping track of the size of the data to send.
             LOG_ERROR("makePacket returned nullptr");
             return false;
         } 
-        if (!sendPacket(*pkt)) 
+        if (!sendPacket(this->socketFd, this->dst, *pkt)) 
         {
             return false;
         }
-
         seqNo++; 
     }
 
@@ -120,7 +120,7 @@ bool Sender::handshake()
     }
 
     auto pkt = makeEmptyPacket();   
-    pkt->seqNo = 0;
+    pkt->seqNo = SYN_SEQNO; 
     pkt->flag = FLAG_SYN;
     if (pkt == nullptr) 
     {
@@ -128,10 +128,8 @@ bool Sender::handshake()
         return false;
     }
 
-    if (!sendPacket(*pkt)) 
-    {
-        return false;
-    }
+    if (!sendPacket(this->socketFd, this->dst, *pkt)) return false;
+    
     this->state = SenderState::SYN_SENT;
 
     if (!waitForSynAck()) 
@@ -150,48 +148,34 @@ bool Sender::handshake()
 
 bool Sender::waitForSynAck()
 {
-    struct pollfd pfd;
-    pfd.fd = this->socketFd;
-    pfd.events = POLLIN;
-
-    const uint8_t MAX_RETRIES = 10;
-    uint8_t retries = 0;
-
-    while (this->state == SenderState::SYN_SENT) 
-    {  
-        int ret = poll(&pfd, 1, 1000); // 1 second timeout
-        if (ret < 0) 
-        {
-            if (errno == EINTR) continue;
-            LOG_ERROR("Poll error: " + std::string(strerror(errno)));
-            return false; 
-        }
-
-        if (ret > 0 && (pfd.revents & POLLIN)) {
-            auto pkt = readPkt();
-            if (pkt == nullptr) 
-            {
-                LOG_ERROR("Failed to read packet during handshake");
-                retries++;
-                continue;
-            }
-            
-            if (pkt->flag == FLAG_SYN_ACK && pkt->seqNo == 1) 
-            {
-                LOG_INFO("Received SYN-ACK, handshake complete");
-                this->state = SenderState::SYN_ACK;
-                return true;
-            }
-            LOG_WARNING("Received unexpected packet");
-        }
-
-        if (++retries >= MAX_RETRIES) 
-        {
-            LOG_ERROR("Handshake failed: Maximum retries reached without receiving SYN-ACK");
-            return false;
-        }
+    if (this->state != SenderState::SYN_SENT) 
+    {
+        LOG_ERROR("State must be SYN_SENT");
+        return false;
     }
-    return true;
+
+    const uint64_t TIMEOUT_MS = 1000;
+    const uint8_t RETRIES = 10;
+    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    {
+        LOG_ERROR("Timeout or error waiting for SYN-ACK");
+        return false;
+    }
+    
+    auto pkt = readPkt(socketFd, dst);
+    if (pkt == nullptr) 
+    {
+        LOG_ERROR("Failed to read packet during handshake");
+        return false;
+    }
+    if (pkt->flag == FLAG_SYN_ACK && pkt->seqNo == (SYN_SEQNO + 1)) 
+    {
+        LOG_INFO("Received SYN-ACK, handshake complete");
+        this->state = SenderState::SYN_ACK;
+        return true;
+    }
+    LOG_WARNING("Received unexpected packet");
+    return false;
 }
 
 bool Sender::sendHandshakeAck()
@@ -199,35 +183,5 @@ bool Sender::sendHandshakeAck()
     auto ackPkt = makeEmptyPacket();
     ackPkt->seqNo = 1; 
     ackPkt->flag = FLAG_ACK;
-    return sendPacket(*ackPkt);
-}
-
-bool Sender::sendPacket(const packet& pkt) 
-{
-    vector<char> serializedPkt = serializePacket(pkt);
-    ssize_t sentBytes = sendto(socketFd, serializedPkt.data(), serializedPkt.size(), 0,
-                        (struct sockaddr*)&dst, sizeof(dst));
-    if (sentBytes == -1) {
-        LOG_ERROR("Failed to send packet: " + std::string(strerror(errno)));
-        return false;
-    }
-    return true;
-}
-
-unique_ptr<packet> Sender::readPkt() 
-{
-    char buf[MAX_PACKET_SIZE];
-    socklen_t addrLen = sizeof(this->dst);
-    ssize_t recvBytes = recvfrom(socketFd, buf, MAX_PACKET_SIZE, 0,
-                                (struct sockaddr*)&(this->dst), &addrLen);
-
-    if (recvBytes < 0) 
-    {
-        LOG_ERROR("Failed to receive first packet: " + std::string(strerror(errno)));
-        return nullptr; 
-    }
-
-    vector<char> data(buf, buf + recvBytes);
-    auto pkt = deserializePacket(data);
-    return pkt;
+    return sendPacket(this->socketFd, this->dst, *ackPkt);
 }

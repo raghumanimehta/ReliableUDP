@@ -8,9 +8,11 @@ Receiver class. The class encapsulates the logic for receiving files using UDP.
 #include <vector>  
 #include <netinet/in.h>
 
-#define PORT 8080 
+#define PORT 8080
 
-enum class ReceieverState : uint8_t {
+
+enum class ReceieverState : uint8_t 
+{
     IDLE = 0,
     SYN_RECV = 1,
     ACK_SENT = 2,
