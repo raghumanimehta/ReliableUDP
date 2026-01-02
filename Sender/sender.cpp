@@ -17,7 +17,7 @@
 #include <cstring>    
 #include "../packet.hpp"
 #include "../logger.cpp"
-#include "../utils.cpp"
+#include "../utils.hpp"
 
 using namespace std;
 

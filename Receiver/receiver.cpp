@@ -57,13 +57,14 @@ Receiver::~Receiver()
 bool Receiver::receiveFile()
 {
    if (!handshake()) return false;      
-    const uint64_t TIMEOUT_MS = 1000;
-    const uint8_t RETRIES = 10;
+   const uint64_t TIMEOUT_MS = 1000;
+   const uint8_t RETRIES = 10;
+
    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
-    {
-        LOG_ERROR("Timeout or error waiting for SYN");
-        return false;
-    }
+   {
+    LOG_ERROR("Timeout or error waiting for SYN");
+    return false; 
+}
 
     auto pkt = readPkt(socketFd, origin);
     if (pkt == nullptr) 
@@ -75,8 +76,6 @@ bool Receiver::receiveFile()
    memcpy(recvPayload, pkt->payload, pkt->payloadLen);
    // TODO: Handle the checks on the packet here
    
-   LOG_INFO("Connection established. Received " + std::to_string(recvBytes) + " bytes.");
-
    // Write the raw received data to output.txt to verify UDP transmission
    std::ofstream outFile("output.txt", std::ios::binary);
    if (outFile.is_open())
@@ -96,7 +95,6 @@ bool Receiver::receiveFile()
 
 bool Receiver::handshake() 
 {
-    char buf[MAX_PACKET_SIZE];
     LOG_INFO("State: IDLE, Waiting for connection (first packet)...");
 
     const uint64_t TIMEOUT_MS = 1000;
@@ -127,8 +125,8 @@ bool Receiver::handshake()
 
     auto sendPkt = makeEmptyPacket();
     sendPkt->flag = FLAG_SYN_ACK;
-    sendPkt->seqNo == SYN_SEQNO + 1;
-    if (!sendPacket(this->socketFd, this->origin, *pkt)) return false;
+    sendPkt->seqNo = SYN_SEQNO + 1;
+    if (!sendPacket(this->socketFd, this->origin, *sendPkt)) return false;
     this->state = ReceieverState::ACK_SENT;
 
     if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
@@ -137,14 +135,14 @@ bool Receiver::handshake()
         return false;
     }
 
-    auto pkt = readPkt(socketFd, origin);
-    if (pkt == nullptr) 
+    auto pkt2 = readPkt(socketFd, origin);
+    if (pkt2 == nullptr) 
     {
         LOG_INFO("Null packet received");
         return false;
     }
 
-    if (pkt->flag == FLAG_ACK && pkt->seqNo == SYN_SEQNO + 1) 
+    if (pkt2->flag == FLAG_ACK && pkt2->seqNo == SYN_SEQNO + 1) 
     {
         LOG_INFO("SYN received");
         this->state = ReceieverState::SYN_RECV;
