@@ -1,6 +1,7 @@
 #include "packet.hpp"
 #include <cstring>
 #include <arpa/inet.h>  // For htonl, htons functions
+#include "logger.cpp"
 
 
 using namespace std;
@@ -9,7 +10,10 @@ using namespace std;
 unique_ptr<packet> makePacket(vector<char>& packetData, uint32_t seqNo, uint8_t flag) 
 {
     uint16_t payloadLen = packetData.size();
-    if (payloadLen > MAX_PAYLOAD_SIZE) return nullptr;
+    if (payloadLen > MAX_PAYLOAD_SIZE) {
+        LOG_ERROR("[MAKE-PACKET] Payload size exceeds maximum. Size: " + std::to_string(payloadLen) + " | Max: " + std::to_string(MAX_PAYLOAD_SIZE));
+        return nullptr;
+    }
 
     auto out = make_unique<packet>();
     
@@ -21,6 +25,7 @@ unique_ptr<packet> makePacket(vector<char>& packetData, uint32_t seqNo, uint8_t 
     char* buffer = packetData.data();
     std::memcpy(&(out->payload), buffer, payloadLen);
     
+    LOG_INFO("[MAKE-PACKET] Packet created successfully. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(payloadLen) + " | Flag: " + std::to_string(flag));
     return out; 
 }
 
@@ -31,6 +36,7 @@ unique_ptr<packet> makeEmptyPacket()
     out->payloadLen = 0;
     out->flag = 0;
     memset(&(out->payload), 0, MAX_PAYLOAD_SIZE);
+    LOG_INFO("[MAKE-EMPTY-PACKET] Empty packet created. SeqNo: 0 | Payload size: 0 | Flag: 0");
     return out; 
 }
 
@@ -69,9 +75,10 @@ bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt) 
     ssize_t sentBytes = sendto(socketFd, serializedPkt.data(), serializedPkt.size(), 0,
                         (const struct sockaddr*)&dst, sizeof(dst));
     if (sentBytes == -1) {
-        LOG_ERROR("Failed to send packet: " + std::string(strerror(errno)));
+        LOG_ERROR("[SEND-PACKET] Failed to send packet. SeqNo: " + std::to_string(pkt.seqNo) + " | Payload size: " + std::to_string(pkt.payloadLen) + " | Error: " + std::string(strerror(errno)));
         return false;
     }
+    LOG_INFO("[SEND-PACKET] Packet sent successfully. SeqNo: " + std::to_string(pkt.seqNo) + " | Payload size: " + std::to_string(pkt.payloadLen) + " | Total bytes sent: " + std::to_string(sentBytes));
     return true;
 }
 
@@ -84,17 +91,22 @@ unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in origin)
 
     if (recvBytes < 0) 
     {
-        LOG_ERROR("Failed to receive first packet: " + std::string(strerror(errno)));
+        LOG_ERROR("[READ-PACKET] Failed to receive packet. Error: " + std::string(strerror(errno)));
         return nullptr; 
     }
 
+    LOG_INFO("[READ-PACKET] Packet received successfully. Total bytes received: " + std::to_string(recvBytes));
     vector<char> data(buf, buf + recvBytes);
     auto pkt = deserializePacket(data);
+    if (pkt != nullptr) {
+        LOG_INFO("[READ-PACKET] Packet deserialized successfully. SeqNo: " + std::to_string(pkt->seqNo) + " | Payload size: " + std::to_string(pkt->payloadLen) + " | Flag: " + std::to_string(pkt->flag));
+    }
     return pkt;
 }
 unique_ptr<packet> deserializePacket(vector<char>& dataBuffer) 
 {
     if (dataBuffer.empty()) {
+        LOG_ERROR("[DESERIALIZE-PACKET] Data buffer is empty");
         return nullptr;
     }
 
@@ -119,12 +131,15 @@ unique_ptr<packet> deserializePacket(vector<char>& dataBuffer)
     offset += sizeof(uint8_t);
 
     if (out->payloadLen > MAX_PAYLOAD_SIZE) {
+        LOG_ERROR("[DESERIALIZE-PACKET] Payload size exceeds maximum. Size: " + std::to_string(out->payloadLen) + " | Max: " + std::to_string(MAX_PAYLOAD_SIZE));
         return nullptr;
     }
 
     if (offset + out->payloadLen <= dataBuffer.size()) {
         std::memcpy(out->payload, buffer + offset, out->payloadLen);
+        LOG_INFO("[DESERIALIZE-PACKET] Packet deserialized successfully. SeqNo: " + std::to_string(out->seqNo) + " | Payload size: " + std::to_string(out->payloadLen) + " | Flag: " + std::to_string(flag));
     } else {
+        LOG_ERROR("[DESERIALIZE-PACKET] Buffer size mismatch. Offset: " + std::to_string(offset) + " | Payload len: " + std::to_string(out->payloadLen) + " | Total buffer size: " + std::to_string(dataBuffer.size()));
         return nullptr;
     }
 

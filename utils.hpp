@@ -15,6 +15,6 @@ enum POOL_STATE {
 };
 
 POOL_STATE waitForRead(int fd, uint64_t timeoutMs);
-POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint8_t maxRetries);
+POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint32_t maxRetries);
 
 #endif

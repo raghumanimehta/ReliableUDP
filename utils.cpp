@@ -22,7 +22,7 @@ POOL_STATE waitForRead(int fd, uint64_t timeoutMs)
     }
 }
 
-POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint8_t maxRetries)
+POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint32_t maxRetries)
 {
     uint8_t retries = 0;
     POOL_STATE pollState;
@@ -35,5 +35,6 @@ POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint8_t maxRetries)
         if (pollState == FAIL) return FAIL;
         retries++;  
     }
+    LOG_ERROR("[WAIT-FOR-READ-RETRY] All retry attempts exhausted. Total attempts: " + std::to_string(maxRetries));
     return TIMEOUT;
 }
