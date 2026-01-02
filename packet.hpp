@@ -31,7 +31,7 @@ std::unique_ptr<packet> makeEmptyPacket();
 std::vector<char> serializePacket(const struct packet& pkt);
 std::unique_ptr<packet> deserializePacket(std::vector<char>& dataBuffer);
 bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt);
-std::unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in dst);
+std::unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in& dst);
 
 #endif 
                             

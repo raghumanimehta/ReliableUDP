@@ -82,7 +82,7 @@ bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt) 
     return true;
 }
 
-unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in origin) 
+unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in& origin) 
 {
     char buf[MAX_PACKET_SIZE];
     socklen_t addrLen = sizeof(origin);

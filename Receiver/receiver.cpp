@@ -79,7 +79,8 @@ Receiver::~Receiver()
 
 bool Receiver::receiveFile()
 {
-    LOG_INFO("[RECEIVE-FILE] Starting file reception. State: " + receiverStateToString(this->state));
+    LOG_INFO("[RECEIVE-FILE] Starting file reception.\n"
+             "  State: " + receiverStateToString(this->state));
     if (!handshake()) {
         LOG_ERROR("[RECEIVE-FILE] Handshake failed. State: " + receiverStateToString(this->state));
         return false;
@@ -87,7 +88,9 @@ bool Receiver::receiveFile()
     const uint64_t TIMEOUT_MS = 1000;
     const uint32_t RETRIES = 1000;
 
-    LOG_INFO("[RECEIVE-FILE] Handshake completed. State: " + receiverStateToString(this->state) + " | Waiting for data packets");
+    LOG_INFO("[RECEIVE-FILE] Handshake completed.\n"
+             "  State: " + receiverStateToString(this->state) +
+             "\n  Waiting for data packets");
     if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
     {
         LOG_ERROR("[RECEIVE-FILE] Timeout or error waiting for data packet. State: " + receiverStateToString(this->state));
@@ -103,7 +106,11 @@ bool Receiver::receiveFile()
     char recvPayload[MAX_PAYLOAD_SIZE];
     memcpy(recvPayload, pkt->payload, pkt->payloadLen);
     // TODO: Handle the checks on the packet here
-    LOG_INFO("[RECEIVE-FILE] Packet received successfully. State: " + receiverStateToString(this->state) + " | SeqNo: " + std::to_string(pkt->seqNo) + " | Payload size: " + std::to_string(pkt->payloadLen) + " bytes | Flag: " + std::string(pkt->flag == FLAG_FIN ? "FIN" : "DATA"));
+    LOG_INFO("[RECEIVE-FILE] Packet received successfully.\n"
+             "  State: " + receiverStateToString(this->state) +
+             "\n  SeqNo: " + std::to_string(pkt->seqNo) +
+             "\n  Payload size: " + std::to_string(pkt->payloadLen) + " bytes"
+             "\n  Flag: " + std::string(pkt->flag == FLAG_FIN ? "FIN" : "DATA"));
 
     // Write the raw received data to output.txt to verify UDP transmission
     std::ofstream outFile("output.txt", std::ios::binary);
@@ -111,7 +118,9 @@ bool Receiver::receiveFile()
     {    
         outFile.write(recvPayload, pkt->payloadLen);
         outFile.close();
-        LOG_INFO("[RECEIVE-FILE] File data written successfully. Output file: output.txt | Bytes written: " + std::to_string(pkt->payloadLen));
+        LOG_INFO("[RECEIVE-FILE] File data written successfully.\n"
+             "  Output file: output.txt\n"
+             "  Bytes written: " + std::to_string(pkt->payloadLen));
     }
     else
     {
@@ -119,13 +128,16 @@ bool Receiver::receiveFile()
         return false;
     }
 
-    LOG_INFO("[RECEIVE-FILE] File reception completed successfully. State: " + receiverStateToString(this->state));
+    LOG_INFO("[RECEIVE-FILE] File reception completed successfully.\n"
+             "  State: " + receiverStateToString(this->state));
     return true;
 }
 
 bool Receiver::handshake() 
 {
-    LOG_INFO("[HANDSHAKE] Starting handshake. State: " + receiverStateToString(this->state) + " | Waiting for SYN packet from sender");
+    LOG_INFO("[HANDSHAKE] Starting handshake.\n"
+             "  State: " + receiverStateToString(this->state) +
+             "\n  Waiting for SYN packet from sender");
 
     const uint64_t TIMEOUT_MS = 1000;
     const uint8_t RETRIES = 10;
@@ -144,7 +156,10 @@ bool Receiver::handshake()
 
     if (pkt->flag == FLAG_SYN && pkt->seqNo == SYN_SEQNO) 
     {
-        LOG_INFO("[HANDSHAKE] Received valid SYN packet. State: " + receiverStateToString(this->state) + " -> SYN_RECV | SeqNo: " + std::to_string(pkt->seqNo) + " | Flag: SYN");
+        LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
+             "  State: " + receiverStateToString(this->state) + " -> SYN_RECV"
+             "\n  SeqNo: " + std::to_string(pkt->seqNo) +
+             "\n  Flag: SYN");
         this->state = ReceieverState::SYN_RECV;
     }  else 
     {
@@ -155,7 +170,10 @@ bool Receiver::handshake()
     auto sendPkt = makeEmptyPacket();
     sendPkt->flag = FLAG_SYN_ACK;
     sendPkt->seqNo = SYN_SEQNO + 1;
-    LOG_INFO("[HANDSHAKE] Sending SYN-ACK response. State: " + receiverStateToString(this->state) + " -> ACK_SENT | SeqNo: " + std::to_string(sendPkt->seqNo) + " | Flag: SYN_ACK");
+    LOG_INFO("[HANDSHAKE] Sending SYN-ACK response.\n"
+             "  State: " + receiverStateToString(this->state) + " -> ACK_SENT"
+             "\n  SeqNo: " + std::to_string(sendPkt->seqNo) +
+             "\n  Flag: SYN_ACK");
     if (!sendPacket(this->socketFd, this->origin, *sendPkt)) {
         LOG_ERROR("[HANDSHAKE] Failed to send SYN-ACK packet. State: " + receiverStateToString(this->state));
         return false;
@@ -177,13 +195,17 @@ bool Receiver::handshake()
 
     if (pkt2->flag == FLAG_ACK && pkt2->seqNo == SYN_SEQNO + 1) 
     {
-        LOG_INFO("[HANDSHAKE] Received valid final ACK. State: " + receiverStateToString(this->state) + " -> CONNECTED | SeqNo: " + std::to_string(pkt2->seqNo) + " | Flag: ACK");
+        LOG_INFO("[HANDSHAKE] Received valid final ACK.\n"
+             "  State: " + receiverStateToString(this->state) + " -> CONNECTED"
+             "\n  SeqNo: " + std::to_string(pkt2->seqNo) +
+             "\n  Flag: ACK");
         this->state = ReceieverState::CONNECTED;
     }  else 
     {
         LOG_ERROR("[HANDSHAKE] Received packet with unexpected values. State: " + receiverStateToString(this->state) + " | SeqNo: " + std::to_string(pkt2->seqNo) + " (Expected: " + std::to_string(SYN_SEQNO + 1) + ") | Flag: " + std::to_string(pkt2->flag) + " (Expected: ACK)");
         return false;
     }
-    LOG_INFO("[HANDSHAKE] Three-way handshake completed successfully. State: " + receiverStateToString(this->state));
+    LOG_INFO("[HANDSHAKE] Three-way handshake completed successfully.\n"
+             "  State: " + receiverStateToString(this->state));
     return true;
 }
