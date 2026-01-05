@@ -29,6 +29,7 @@ private:
     int socketFd;
     ReceieverState state;
     bool handshake(); 
+    bool waitAndUpdateState(uint64_t timeout, uint32_t retries, uint32_t expectedSeqNo,  uint8_t expectedFlag, ReceieverState nextState);
 
 public:
     Receiver(); 

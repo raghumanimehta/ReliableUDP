@@ -133,15 +133,9 @@ bool Receiver::receiveFile()
     return true;
 }
 
-bool Receiver::handshake() 
+bool Receiver::waitAndUpdateState(uint64_t timeout, uint32_t retries, uint32_t expectedSeqNo,  uint8_t expectedFlag, ReceieverState nextState) 
 {
-    LOG_INFO("[HANDSHAKE] Starting handshake.\n"
-             "  State: " + receiverStateToString(this->state) +
-             "\n  Waiting for SYN packet from sender");
-
-    const uint64_t TIMEOUT_MS = 1000;
-    const uint8_t RETRIES = 10;
-    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    if (waitForReadWithRetry(socketFd, timeout, retries) != SUCCESS)
     {
         LOG_ERROR("[HANDSHAKE] Timeout waiting for SYN packet. State: " + receiverStateToString(this->state));
         return false;
@@ -154,19 +148,33 @@ bool Receiver::handshake()
         return false;
     }
 
-    if (pkt->flag == FLAG_SYN && pkt->seqNo == SYN_SEQNO) 
+    if (pkt->flag == expectedFlag && pkt->seqNo == expectedSeqNo) 
     {
-        LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
-             "  State: " + receiverStateToString(this->state) + " -> SYN_RECV"
-             "\n  SeqNo: " + std::to_string(pkt->seqNo) +
-             "\n  Flag: SYN");
-        this->state = ReceieverState::SYN_RECV;
-    }  else 
-    {
+        this->state = nextState;
+        return true;
+    }  else {
         LOG_ERROR("[HANDSHAKE] Received packet with unexpected values. State: " + receiverStateToString(this->state) + " | SeqNo: " + std::to_string(pkt->seqNo) + " (Expected: " + std::to_string(SYN_SEQNO) + ") | Flag: " + std::to_string(pkt->flag) + " (Expected: SYN)");
         return false;
     }
+}
 
+bool Receiver::handshake() 
+{
+    LOG_INFO("[HANDSHAKE] Starting handshake.\n"
+             "  State: " + receiverStateToString(this->state) +
+             "\n  Waiting for SYN packet from sender");
+
+    const uint64_t TIMEOUT_MS = 1000;
+    const uint8_t RETRIES = 10;
+    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, SYN_SEQNO, FLAG_SYN, ReceieverState::SYN_RECV)) 
+    {
+        LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
+             "  State: " + receiverStateToString(this->state) + " -> SYN_RECV"
+             "\n  SeqNo: " + std::to_string(SYN_SEQNO) +
+             "\n  Flag: SYN");
+    } else {
+        return false;
+    }
     auto sendPkt = makeEmptyPacket();
     sendPkt->flag = FLAG_SYN_ACK;
     sendPkt->seqNo = SYN_SEQNO + 1;
@@ -180,29 +188,13 @@ bool Receiver::handshake()
     }
     this->state = ReceieverState::ACK_SENT;
 
-    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, SYN_SEQNO + 1, FLAG_ACK, ReceieverState::CONNECTED)) 
     {
-        LOG_ERROR("[HANDSHAKE] Timeout waiting for final ACK packet. State: " + receiverStateToString(this->state));
-        return false;
-    }
-
-    auto pkt2 = readPkt(socketFd, origin);
-    if (pkt2 == nullptr) 
-    {
-        LOG_ERROR("[HANDSHAKE] Failed to read final ACK packet. State: " + receiverStateToString(this->state));
-        return false;
-    }
-
-    if (pkt2->flag == FLAG_ACK && pkt2->seqNo == SYN_SEQNO + 1) 
-    {
-        LOG_INFO("[HANDSHAKE] Received valid final ACK.\n"
-             "  State: " + receiverStateToString(this->state) + " -> CONNECTED"
-             "\n  SeqNo: " + std::to_string(pkt2->seqNo) +
-             "\n  Flag: ACK");
-        this->state = ReceieverState::CONNECTED;
-    }  else 
-    {
-        LOG_ERROR("[HANDSHAKE] Received packet with unexpected values. State: " + receiverStateToString(this->state) + " | SeqNo: " + std::to_string(pkt2->seqNo) + " (Expected: " + std::to_string(SYN_SEQNO + 1) + ") | Flag: " + std::to_string(pkt2->flag) + " (Expected: ACK)");
+        LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
+             "  State: " + receiverStateToString(this->state) + " -> SYN_RECV"
+             "\n  SeqNo: " + std::to_string(SYN_SEQNO + 1) +
+             "\n  Flag: SYN");
+    } else {
         return false;
     }
     LOG_INFO("[HANDSHAKE] Three-way handshake completed successfully.\n"
