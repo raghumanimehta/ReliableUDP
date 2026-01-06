@@ -17,7 +17,7 @@
 - [x] Set up basic UDP client and server
 - [x] Implement file reading and sending logic on the client
 - [x] Implement file writing logic on the server
-- [ ] Add packet sequence numbering
+- [x] Add packet sequence numbering
 - [ ] Implement basic ACK system
 - [ ] Add retransmission mechanism with timeouts
 - [ ] Define and document end-of-file signaling
