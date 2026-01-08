@@ -10,9 +10,15 @@
 constexpr size_t WINDOW_SIZE = 10;
 
 struct WindowSlot {
-    
+    std::unique_ptr<packet> packet;                      // The packet data
+    std::chrono::steady_clock::time_point sentTime;      // When packet was sent (for timeout)
+    int retransmitCount;                                 // Number of retransmissions
 };
 
 struct SlidingWindow {
-    
+    std::unordered_map<uint32_t, WindowSlot> slots;  // key = sequence number
+    uint32_t base;                                    // Oldest unacked sequence number
+    uint32_t nextSeqNo;                              // Next sequence number to use
 };
+
+#endif
