@@ -11,7 +11,9 @@
 SlidingWindow::SlidingWindow(uint32_t base)
     : base(base), 
       nextSeqNo(0), 
-      slots() 
+      slots(),
+      timerStart(std::chrono::steady_clock::now()),
+      isTimerRunning(false)
 {
     this->slots.reserve(WINDOW_SIZE); 
 }
@@ -21,6 +23,11 @@ SlidingWindow::~SlidingWindow()
 	slots.clear();
 }
 
+void SlidingWindow::startTimer() {
+    timerStart = std::chrono::steady_clock::now();
+    isTimerRunning = true;
+} 
+
 bool SlidingWindow::add(WindowSlot w) 
 {
 	if (this->slots.size() >= WINDOW_SIZE) {
@@ -29,6 +36,12 @@ bool SlidingWindow::add(WindowSlot w)
 
 	if (this->slots.find(w.packet->seqNo) == this->slots.end())  {
         this->slots.insert(std::make_pair(w.packet->seqNo, w));
+
+        if (!this->isTimerRunning) {
+            startTimer();
+            isTimerRunning = true;
+        }
+
 		LOG_INFO("Added packet with sequence number: " + std::to_string(w.packet->seqNo) + " to window");
 		return true;
     }
@@ -40,45 +53,51 @@ bool SlidingWindow::remove(uint32_t ackSeqNo)
 {
     if (slots.empty()) return false;
     
-    // TCP uses cumulative ACKs: ackSeqNo acknowledges all packets < ackSeqNo
     uint32_t actualSeqNo = ackSeqNo - 1;
-    
     bool removedAny = false;
     
-    // Remove all packets with seqNo <= actualSeqNo
     auto it = slots.begin();
     while (it != slots.end()) {
         if (it->first <= actualSeqNo) {
             LOG_INFO("Removing packet with seqNo: " + std::to_string(it->first));
-            
-            // Update base to the next packet after removed ones
-            if (it->first == base) {
-                // Find next base after removal
-                uint32_t oldBase = base;
-                base = actualSeqNo + 1;  // Move base forward
-                
-                // Look for the actual next unacked packet
-                for (uint32_t seq = oldBase + 1; seq <= actualSeqNo + WINDOW_SIZE; ++seq) {
-                    if (slots.find(seq) != slots.end()) {
-                        base = seq;
-                        break;
-                    }
-                }
-            }
-            
-            it = slots.erase(it);  // erase returns iterator to next element
+            it = slots.erase(it);
             removedAny = true;
         } else {
             ++it;
         }
     }
     
-    // Update base to smallest remaining seqNo if window not empty
     if (!slots.empty()) {
         auto minIt = std::min_element(slots.begin(), slots.end(),
                                       [](const auto &a, const auto &b){ return a.first < b.first; });
         base = minIt->first;
+        startTimer();
+    } else {
+        base = actualSeqNo + 1;
+        isTimerRunning = false;
     }
     
     return removedAny;
 }
+
+bool SlidingWindow::isTimedOut() 
+{
+    if (!isTimerRunning) 
+    {
+        LOG_WARNING("Attempting to call isTimeout when the timer is not running");
+        return false;
+    }
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - timerStart);
+    return elapsed >= TIMEOUT;
+}
+
+// std::vector<std::pair<uint32_t, packet*>> SlidingWindow::getWindowPackets() {
+//     std::vector<std::pair<uint32_t, packet*>> vec;
+    
+//     for (const auto& slot : slots) {
+//         vec.push_back({slot.first, `});
+//     }
+    
+//     return vec;
+// }

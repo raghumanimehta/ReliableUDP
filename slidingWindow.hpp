@@ -23,8 +23,9 @@ class SlidingWindow {
         uint32_t nextSeqNo;                              // Next sequence number to use
         
         // Single timer for entire window
-        std::chrono::steady_clock::time_point baseTimerStart;
+        std::chrono::steady_clock::time_point timerStart;
         bool isTimerRunning;
+        void startTimer();
 
     public: 
         SlidingWindow(uint32_t base);
