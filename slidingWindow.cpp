@@ -21,7 +21,7 @@ SlidingWindow::~SlidingWindow()
 	slots.clear();
 }
 
-bool SlidingWindow::addToWindow(WindowSlot w) 
+bool SlidingWindow::add(WindowSlot w) 
 {
 	if (this->slots.size() >= WINDOW_SIZE) {
 		return false;
@@ -36,22 +36,49 @@ bool SlidingWindow::addToWindow(WindowSlot w)
 	return false;
 }
 
-bool SlidingWindow::removeFromWindow()
+bool SlidingWindow::remove(uint32_t ackSeqNo)
 {
-	if (slots.empty()) return false;
-	auto it = slots.find(base);
-	if (it != slots.end()) {
-		slots.erase(it);
-		++base;
-		return true;
-	}
-
-	// If `base` not found, remove the slot with the smallest sequence number as a fallback.
-	auto minIt = std::min_element(slots.begin(), slots.end(),
-								  [](const auto &a, const auto &b){ return a.first < b.first; });
-	if (minIt != slots.end()) {
-		slots.erase(minIt);
-		return true;
-	}
-	return false;
+    if (slots.empty()) return false;
+    
+    // TCP uses cumulative ACKs: ackSeqNo acknowledges all packets < ackSeqNo
+    uint32_t actualSeqNo = ackSeqNo - 1;
+    
+    bool removedAny = false;
+    
+    // Remove all packets with seqNo <= actualSeqNo
+    auto it = slots.begin();
+    while (it != slots.end()) {
+        if (it->first <= actualSeqNo) {
+            LOG_INFO("Removing packet with seqNo: " + std::to_string(it->first));
+            
+            // Update base to the next packet after removed ones
+            if (it->first == base) {
+                // Find next base after removal
+                uint32_t oldBase = base;
+                base = actualSeqNo + 1;  // Move base forward
+                
+                // Look for the actual next unacked packet
+                for (uint32_t seq = oldBase + 1; seq <= actualSeqNo + WINDOW_SIZE; ++seq) {
+                    if (slots.find(seq) != slots.end()) {
+                        base = seq;
+                        break;
+                    }
+                }
+            }
+            
+            it = slots.erase(it);  // erase returns iterator to next element
+            removedAny = true;
+        } else {
+            ++it;
+        }
+    }
+    
+    // Update base to smallest remaining seqNo if window not empty
+    if (!slots.empty()) {
+        auto minIt = std::min_element(slots.begin(), slots.end(),
+                                      [](const auto &a, const auto &b){ return a.first < b.first; });
+        base = minIt->first;
+    }
+    
+    return removedAny;
 }

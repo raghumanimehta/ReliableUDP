@@ -19,7 +19,7 @@ enum class ReceieverState : uint8_t
     CONNECTED = 3,
     CLOSING_INIT = 4,
     CLOSING = 5,
-    CLOSED = 6  
+    "CLOSED = 6  
 };
 
 class Receiver 
