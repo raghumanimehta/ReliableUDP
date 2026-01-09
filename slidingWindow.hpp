@@ -15,10 +15,21 @@ struct WindowSlot {
     int retransmitCount;                                 // Number of retransmissions
 };
 
-struct SlidingWindow {
-    std::unordered_map<uint32_t, WindowSlot> slots;  // key = sequence number
-    uint32_t base;                                    // Oldest unacked sequence number
-    uint32_t nextSeqNo;                              // Next sequence number to use
+class SlidingWindow {
+    private:
+        std::unordered_map<uint32_t, WindowSlot> slots;  // key = sequence number
+        uint32_t base;                                    // Oldest unacked sequence number
+        uint32_t nextSeqNo;                              // Next sequence number to use
+
+
+    public: 
+    SlidingWindow(uint32_t base);
+    ~SlidingWindow();
+    bool addToWindow(WindowSlot w);
+    bool removeFromWindow();
+    
 };
+
+
 
 #endif
