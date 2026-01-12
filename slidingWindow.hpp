@@ -34,16 +34,12 @@ class SlidingWindow {
         bool add(WindowSlot w);
         bool remove(uint32_t seqNo);
         
-        // Check if base timer expired
         bool isTimedOut();
         
-        // Get all packets to retransmit
-        std::vector<std::pair<uint32_t, packet*>> getWindowPackets();
-        
-        // Restart timer after sending/retransmitting
+        std::vector<std::unique_ptr<packet>> getPktsForRetransmit();
+
         void restartTimer();
         
-        // Stop timer when window is empty
         void stopTimer();
 };
 

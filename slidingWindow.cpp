@@ -92,12 +92,12 @@ bool SlidingWindow::isTimedOut()
     return elapsed >= TIMEOUT;
 }
 
-// std::vector<std::pair<uint32_t, packet*>> SlidingWindow::getWindowPackets() {
-//     std::vector<std::pair<uint32_t, packet*>> vec;
-    
-//     for (const auto& slot : slots) {
-//         vec.push_back({slot.first, `});
-//     }
-    
-//     return vec;
-// }
+std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
+{
+    std::vector<std::unique_ptr<packet>> ret;
+    for (auto& p: slots) 
+    {
+        ret.push_back(p.second.packet);
+    }
+    return ret;
+} 
