@@ -41,7 +41,7 @@ bool SlidingWindow::add(WindowSlot w)
             startTimer();
             isTimerRunning = true;
         }
-
+        nextSeqNo++;
 		LOG_INFO("Added packet with sequence number: " + std::to_string(w.packet->seqNo) + " to window");
 		return true;
     }
@@ -97,7 +97,10 @@ std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
     std::vector<std::unique_ptr<packet>> ret;
     for (auto& p: slots) 
     {
-        ret.push_back(p.second.packet);
+        auto copy = std::make_unique<packet>(*p.second.packet);
+        ret.push_back(std::move(copy));
     }
     return ret;
-} 
+}
+
+    

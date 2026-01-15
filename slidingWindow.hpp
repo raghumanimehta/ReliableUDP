@@ -35,12 +35,14 @@ class SlidingWindow {
         bool remove(uint32_t seqNo);
         
         bool isTimedOut();
-        
         std::vector<std::unique_ptr<packet>> getPktsForRetransmit();
-
-        void restartTimer();
         
-        void stopTimer();
+        // Inline utility functions
+        inline bool isFull() const { return slots.size() >= WINDOW_SIZE; }
+        inline bool isEmpty() const { return slots.empty(); }
+        inline uint32_t getBase() const { return base; }
+        inline size_t size() const { return slots.size(); }
+        inline void stopTimer() { isTimerRunning = false; }
 };
 
 #endif
