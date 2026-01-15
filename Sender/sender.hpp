@@ -10,6 +10,7 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 #include <netinet/in.h>    
 #include <arpa/inet.h>     
 #include <memory>
+#include "../slidingWindow.hpp"
 
 struct packet;
 
@@ -28,6 +29,7 @@ private:
     struct sockaddr_in dst;
     int socketFd;
     SenderState state; 
+    SlidingWindow window; 
 
     bool handshake();
     bool waitForSynAck();
@@ -39,7 +41,7 @@ public:
     ~Sender();
 
     bool sendFile(const std::vector<char>& fileData);
-
+    void waitForWindowToOpen();
 }; 
 
 #endif

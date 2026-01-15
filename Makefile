@@ -8,7 +8,7 @@ RECEIVER_BIN := $(BIN_DIR)/receiver
 
 SENDER_SRCS := $(wildcard Sender/*.cpp)
 RECEIVER_SRCS := $(wildcard Receiver/*.cpp)
-COMMON_SRCS := logger.cpp packet.cpp utils.cpp
+COMMON_SRCS := logger.cpp packet.cpp utils.cpp slidingWindow.cpp
 
 SENDER_OBJS := $(SENDER_SRCS:.cpp=.o) $(COMMON_SRCS:.cpp=.o)
 RECEIVER_OBJS := $(RECEIVER_SRCS:.cpp=.o) $(COMMON_SRCS:.cpp=.o)

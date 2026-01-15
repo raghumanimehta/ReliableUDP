@@ -8,10 +8,13 @@
 #include "packet.hpp"
 #include "logger.cpp"
 
+// local timeout used by the sliding window timer
+static const std::chrono::milliseconds TIMEOUT_MS = std::chrono::milliseconds(1000);
+
 SlidingWindow::SlidingWindow(uint32_t base)
-    : base(base), 
+    : slots(),
+      base(base), 
       nextSeqNo(0), 
-      slots(),
       timerStart(std::chrono::steady_clock::now()),
       isTimerRunning(false)
 {
@@ -30,23 +33,24 @@ void SlidingWindow::startTimer() {
 
 bool SlidingWindow::add(WindowSlot w) 
 {
-	if (this->slots.size() >= WINDOW_SIZE) {
-		return false;
-	}
+    if (this->slots.size() >= WINDOW_SIZE) {
+        LOG_INFO("Window full");
+        return false;
+    }
 
-	if (this->slots.find(w.packet->seqNo) == this->slots.end())  {
-        this->slots.insert(std::make_pair(w.packet->seqNo, w));
+    if (this->slots.find(w.packet->seqNo) == this->slots.end())  {
+        this->slots.emplace(w.packet->seqNo, std::move(w));
 
         if (!this->isTimerRunning) {
             startTimer();
             isTimerRunning = true;
         }
         nextSeqNo++;
-		LOG_INFO("Added packet with sequence number: " + std::to_string(w.packet->seqNo) + " to window");
-		return true;
+        LOG_INFO("Added packet with sequence number: " + std::to_string(w.packet->seqNo) + " to window");
+        return true;
     }
     LOG_WARNING("pkt with seqNo: " + std::to_string(w.packet->seqNo) + " already in the sliding window");
-	return false;
+    return false;
 }
 
 bool SlidingWindow::remove(uint32_t ackSeqNo)
@@ -89,7 +93,7 @@ bool SlidingWindow::isTimedOut()
     }
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - timerStart);
-    return elapsed >= TIMEOUT;
+    return elapsed >= TIMEOUT_MS;
 }
 
 std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
@@ -103,4 +107,3 @@ std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
     return ret;
 }
 
-    

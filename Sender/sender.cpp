@@ -21,6 +21,9 @@
 
 using namespace std;
 
+const uint64_t TIMEOUT_MS = 1000;
+const uint8_t RETRIES = 100;
+
 static std::string senderStateToString(SenderState s)
 {
     switch (s)
@@ -43,7 +46,7 @@ static std::string senderStateToString(SenderState s)
 }
 
 Sender::Sender(const std::string &destIp, const int port)
-    : socketFd(-1), state(SenderState::IDLE)
+    : socketFd(-1), state(SenderState::IDLE), window(0)
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd == -1)
@@ -51,6 +54,7 @@ Sender::Sender(const std::string &destIp, const int port)
         LOG_ERROR("[SENDER-INIT] Failed to create UDP socket. Error: " + std::string(strerror(errno)));
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }
+    
 
     memset(&dst, 0, sizeof(dst));
     dst.sin_family = AF_INET; // use IPv4
@@ -101,7 +105,7 @@ The method is responsible for keeping track of the size of the data to send.
     size_t fileSize = fileData.size();
     size_t remainingSize = fileSize;
     size_t offset = 0;
-    uint32_t seqNo = 0;
+    uint32_t seqNo = SYN_SEQNO + 2;
     LOG_INFO("[SEND-FILE] Starting file transmission. State: CONNECTED | Total size: " + std::to_string(fileSize) + " bytes");
 
     while (remainingSize > 0)
@@ -123,12 +127,27 @@ The method is responsible for keeping track of the size of the data to send.
             LOG_ERROR("[SEND-FILE] Failed to send packet. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize));
             return false;
         }
+        WindowSlot ws {move(pkt), 0};
+        if (!this->window.add(move(ws))) 
+        {
+            this->waitForWindowToOpen();
+        }
         LOG_INFO("[SEND-FILE] Packet sent successfully. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize) + " | Flag: " + std::string(flag == FLAG_FIN ? "FIN" : "DATA") + " | Remaining: " + std::to_string(remainingSize) + " bytes");
         seqNo++;
     }
 
     LOG_INFO("[SEND-FILE] File transmission completed successfully. State: CONNECTED | Total packets sent: " + std::to_string(seqNo));
     return true;
+}
+
+void Sender::waitForWindowToOpen() 
+{
+    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
+    {
+        LOG_ERROR("[WAIT-SYNACK] Timeout or error waiting for SYN-ACK. State: SYN_SENT");
+        return false;
+    }
+
 }
 
 bool Sender::handshake()
@@ -189,8 +208,6 @@ bool Sender::waitForSynAck()
         return false;
     }
 
-    const uint64_t TIMEOUT_MS = 1000;
-    const uint8_t RETRIES = 10;
     LOG_INFO("[WAIT-SYNACK] Waiting for SYN-ACK response. State: SYN_SENT | Timeout: " + std::to_string(TIMEOUT_MS) + "ms | Max Retries: " + std::to_string(RETRIES));
     if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
     {
