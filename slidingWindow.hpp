@@ -9,10 +9,10 @@
 #include <chrono>
 
 constexpr size_t WINDOW_SIZE = 10;
-constexpr std::chrono::milliseconds TIMEOUT = std::chrono::milliseconds(500); // Adjust as needed
+constexpr std::chrono::milliseconds WINDOW_TIMEOUT = std::chrono::milliseconds(500); // Adjust as needed
 
 struct WindowSlot {
-    std::unique_ptr<packet> packet;  // The packet data
+    std::unique_ptr<packet> pkt;     // The packet data
     int retransmitCount;             // Number of retransmissions
 };
 

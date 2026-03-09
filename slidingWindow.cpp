@@ -9,9 +9,9 @@
 #include "logger.cpp"
 
 SlidingWindow::SlidingWindow(uint32_t base)
-    : base(base), 
+     :slots(),
+      base(base), 
       nextSeqNo(0), 
-      slots(),
       timerStart(std::chrono::steady_clock::now()),
       isTimerRunning(false)
 {
@@ -30,22 +30,29 @@ void SlidingWindow::startTimer() {
 
 bool SlidingWindow::add(WindowSlot w) 
 {
+    if (w.pkt == nullptr) {
+        LOG_ERROR("Attempted to add a null packet to the sliding window");
+        return false;
+    }
+
 	if (this->slots.size() >= WINDOW_SIZE) {
 		return false;
 	}
 
-	if (this->slots.find(w.packet->seqNo) == this->slots.end())  {
-        this->slots.insert(std::make_pair(w.packet->seqNo, w));
+    const uint32_t seqNo = w.pkt->seqNo;
+
+    if (this->slots.find(seqNo) == this->slots.end())  {
+        this->slots.emplace(seqNo, std::move(w));
 
         if (!this->isTimerRunning) {
             startTimer();
             isTimerRunning = true;
         }
         nextSeqNo++;
-		LOG_INFO("Added packet with sequence number: " + std::to_string(w.packet->seqNo) + " to window");
+        LOG_INFO("Added packet with sequence number: " + std::to_string(seqNo) + " to window");
 		return true;
     }
-    LOG_WARNING("pkt with seqNo: " + std::to_string(w.packet->seqNo) + " already in the sliding window");
+    LOG_WARNING("pkt with seqNo: " + std::to_string(seqNo) + " already in the sliding window");
 	return false;
 }
 
@@ -89,7 +96,7 @@ bool SlidingWindow::isTimedOut()
     }
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - timerStart);
-    return elapsed >= TIMEOUT;
+    return elapsed >= WINDOW_TIMEOUT;
 }
 
 std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
@@ -97,7 +104,7 @@ std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
     std::vector<std::unique_ptr<packet>> ret;
     for (auto& p: slots) 
     {
-        auto copy = std::make_unique<packet>(*p.second.packet);
+        auto copy = std::make_unique<packet>(*p.second.pkt);
         ret.push_back(std::move(copy));
     }
     return ret;

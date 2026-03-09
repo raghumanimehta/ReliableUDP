@@ -43,7 +43,7 @@ static std::string senderStateToString(SenderState s)
 }
 
 Sender::Sender(const std::string &destIp, const int port)
-    : socketFd(-1), state(SenderState::IDLE)
+    : socketFd(-1), state(SenderState::IDLE), sw(WINDOW_SIZE)
 {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd == -1)
@@ -65,6 +65,14 @@ Sender::~Sender()
     {
         close(socketFd);
     }
+}
+
+void Sender::waitForSlidingWindowSpace()
+{
+    while (this->sw.isFull())
+    {
+        LOG_INFO("[SEND-FILE] Waiting for window to open up");
+    }    
 }
 
 bool Sender::sendFile(const std::vector<char> &fileData)
@@ -106,6 +114,8 @@ The method is responsible for keeping track of the size of the data to send.
 
     while (remainingSize > 0)
     {
+        this->waitForSlidingWindowSpace();
+
         size_t thisSize = min<size_t>(MAX_PAYLOAD_SIZE, remainingSize);
         remainingSize -= thisSize;
         vector<char> packetData(thisSize);
@@ -118,12 +128,34 @@ The method is responsible for keeping track of the size of the data to send.
             LOG_ERROR("[SEND-FILE] Packet creation failed. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize) + " | Flag: " + std::to_string(flag));
             return false;
         }
+
         if (!sendPacket(this->socketFd, this->dst, *pkt))
         {
             LOG_ERROR("[SEND-FILE] Failed to send packet. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize));
             return false;
         }
-        LOG_INFO("[SEND-FILE] Packet sent successfully. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize) + " | Flag: " + std::string(flag == FLAG_FIN ? "FIN" : "DATA") + " | Remaining: " + std::to_string(remainingSize) + " bytes");
+
+        LOG_INFO(
+            "[SEND-FILE] Packet sent successfully. SeqNo: " + std::to_string(seqNo) + 
+            " | Payload size: " + std::to_string(thisSize) + 
+            " | Flag: " + std::string(flag == FLAG_FIN ? "FIN" : "DATA") + 
+            " | Remaining: " + std::to_string(remainingSize) + " bytes"
+        );
+
+        if (!this->sw.add(WindowSlot{std::move(pkt), 0}))
+        {
+            LOG_ERROR(
+                "[SEND-FILE] Failed to add packet to sliding window. SeqNo: " + std::to_string(seqNo) +
+                " | Window occupancy: " + std::to_string(this->sw.size()) + "/" + std::to_string(WINDOW_SIZE)
+            );
+            return false;
+        }
+
+        LOG_INFO(
+            "[SEND-FILE] Packet added to sliding window. SeqNo: " + std::to_string(seqNo) +
+            " | Window occupancy: " + std::to_string(this->sw.size()) + "/" + std::to_string(WINDOW_SIZE)
+        );
+
         seqNo++;
     }
 
