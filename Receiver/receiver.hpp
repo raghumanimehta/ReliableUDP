@@ -4,9 +4,9 @@ Receiver class. The class encapsulates the logic for receiving files using UDP.
 #ifndef RECEIVER_HPP
 #define RECEIVER_HPP
 
+#include "../packet.hpp"
 #include <netinet/in.h>
-#include <string>
-#include <vector>
+#include <stdio.h>
 
 #define PORT 8080
 
@@ -29,6 +29,7 @@ class Receiver {
     bool waitAndUpdateState(uint64_t timeout, uint32_t retries,
                             uint32_t expectedSeqNo, uint8_t expectedFlag,
                             ReceieverState nextState);
+    std::unique_ptr<packet> receivePkt();
 
   public:
     Receiver();

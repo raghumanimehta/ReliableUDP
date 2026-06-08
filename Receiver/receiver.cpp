@@ -1,6 +1,8 @@
 #include "receiver.hpp"
 
 // Required for socket functions
+#include <cstddef>
+#include <memory>
 #include <sys/socket.h>
 
 // Required for address structures
@@ -78,6 +80,28 @@ Receiver::~Receiver() {
     }
 }
 
+unique_ptr<packet> Receiver::receivePkt() {
+    // TODO: perhaps make the following constants
+    //
+    const uint64_t TIMEOUT_MS = 1000;
+    const uint32_t RETRIES = 1000;
+
+    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS) {
+        LOG_ERROR(
+            "[RECEIVE-FILE] Timeout or error waiting for data packet. State: " +
+            receiverStateToString(this->state));
+        return nullptr;
+    }
+
+    auto pkt = readPkt(socketFd, origin);
+    if (pkt == nullptr) {
+        LOG_ERROR("[RECEIVE-FILE] Failed to read data packet. State: " +
+                  receiverStateToString(this->state));
+        return nullptr;
+    }
+    return pkt;
+}
+
 bool Receiver::receiveFile() {
     LOG_INFO("[RECEIVE-FILE] Starting file reception.\n"
              "  State: " +
@@ -87,26 +111,12 @@ bool Receiver::receiveFile() {
                   receiverStateToString(this->state));
         return false;
     }
-    const uint64_t TIMEOUT_MS = 1000;
-    const uint32_t RETRIES = 1000;
 
     LOG_INFO("[RECEIVE-FILE] Handshake completed.\n"
              "  State: " +
              receiverStateToString(this->state) +
              "\n  Waiting for data packets");
-    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS) {
-        LOG_ERROR(
-            "[RECEIVE-FILE] Timeout or error waiting for data packet. State: " +
-            receiverStateToString(this->state));
-        return false;
-    }
 
-    auto pkt = readPkt(socketFd, origin);
-    if (pkt == nullptr) {
-        LOG_ERROR("[RECEIVE-FILE] Failed to read data packet. State: " +
-                  receiverStateToString(this->state));
-        return false;
-    }
     char recvPayload[MAX_PAYLOAD_SIZE];
     memcpy(recvPayload, pkt->payload, pkt->payloadLen);
     // TODO: Handle the checks on the packet waitForReadWithRetry
