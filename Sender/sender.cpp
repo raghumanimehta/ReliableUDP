@@ -159,10 +159,10 @@ bool Sender::sendTrackedPacket(std::unique_ptr<packet> &pkt) {
     while (this->window.isFull()) {
         LOG_INFO("[SEND-TRACKED-PACKET] Window full. SeqNo: " +
                  std::to_string(pkt->seqNo) + " | Waiting for ACK.");
-        if (!this->waitForWindowToOpen()) {
+        if (!this->waitForWindowProgress()) {
             LOG_ERROR(
                 "[SEND-TRACKED-PACKET] Failed while waiting for window to "
-                "open. SeqNo: " +
+                "make progress. SeqNo: " +
                 std::to_string(pkt->seqNo));
             return false;
         }
@@ -188,26 +188,68 @@ bool Sender::sendTrackedPacket(std::unique_ptr<packet> &pkt) {
     return true;
 }
 
-bool Sender::waitForWindowToOpen() {
-    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS) {
-        LOG_ERROR("[WAIT-SYNACK] Timeout or error waiting for SYN-ACK. State: "
-                  "SYN_SENT");
-        return false;
+bool Sender::waitForWindowProgress() {
+    uint8_t retries = 0;
+
+    LOG_INFO("[WAIT-WINDOW] Waiting for data ACK. State: " +
+             senderStateToString(this->state) + " | Timeout: " +
+             std::to_string(TIMEOUT_MS) +
+             "ms | Max Retries: " + std::to_string(RETRIES));
+
+    while (retries < RETRIES) {
+        POOL_STATE pollState = waitForRead(socketFd, TIMEOUT_MS);
+        if (pollState == INTR) {
+            continue;
+        }
+
+        if (pollState == FAIL) {
+            LOG_ERROR("[WAIT-WINDOW] Poll failed while waiting for data ACK. "
+                      "State: " +
+                      senderStateToString(this->state));
+            return false;
+        }
+
+        if (pollState == TIMEOUT) {
+            retries++;
+            continue;
+        }
+
+        auto pkt = readPkt(this->socketFd, this->dst);
+        if (pkt == nullptr) {
+            LOG_ERROR("[WAIT-WINDOW] Failed to read packet while waiting for "
+                      "data ACK. State: " +
+                      senderStateToString(this->state));
+            return false;
+        }
+
+        if (pkt->flag != FLAG_ACK) {
+            LOG_WARNING("[WAIT-WINDOW] Ignoring non-ACK packet during data "
+                        "transfer. SeqNo: " +
+                        std::to_string(pkt->seqNo) +
+                        " | Flag: " + std::to_string(pkt->flag));
+            continue;
+        }
+
+        if (this->window.remove(pkt->seqNo)) {
+            LOG_INFO("[WAIT-WINDOW] Received cumulative ACK. AckSeqNo: " +
+                     std::to_string(pkt->seqNo) +
+                     " | Removed packet(s) from sliding window. Current "
+                     "window size: " +
+                     std::to_string(this->window.size()));
+            return true;
+        }
+
+        LOG_WARNING("[WAIT-WINDOW] Received ACK with no window progress. "
+                    "AckSeqNo: " +
+                    std::to_string(pkt->seqNo) +
+                    " | Current window size: " +
+                    std::to_string(this->window.size()));
     }
 
-    auto pkt = readPkt(this->socketFd, this->dst);
-    if (pkt == nullptr) {
-        return false;
-    }
-    if (pkt->flag == FLAG_ACK && this->window.remove(pkt->seqNo)) {
-        LOG_INFO("[WAIT-WINDOW] Received ACK for SeqNo: " +
-                 std::to_string(pkt->seqNo) +
-                 " | Removed from sliding window. Current window size: " +
-                 std::to_string(this->window.size()));
-        return true;
-    }
-    LOG_WARNING("[WAIT-WINDOW] Received ACK for SeqNo: " +
-                std::to_string(pkt->seqNo) + " | Not found in sliding window.");
+    LOG_ERROR("[WAIT-WINDOW] Retry attempts exhausted while waiting for data "
+              "ACK. Total attempts: " +
+              std::to_string(RETRIES) + " | State: " +
+              senderStateToString(this->state));
     return false;
 }
 

@@ -34,6 +34,7 @@ private:
   bool waitForSynAck();
   bool sendHandshakeAck();
   bool sendTrackedPacket(std::unique_ptr<packet> &pkt);
+  bool waitForWindowProgress();
 
 public:
   Sender(const std::string &destIp, const int port);
@@ -41,7 +42,6 @@ public:
   ~Sender();
 
   bool sendFile(const std::vector<char> &fileData);
-  bool waitForWindowToOpen();
 };
 
 #endif
