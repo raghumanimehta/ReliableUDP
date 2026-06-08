@@ -10,21 +10,22 @@
 #include <arpa/inet.h> // For inet_addr(), inet_ntoa(), etc.
 
 // Required for close()
-#include <unistd.h>
-#include <poll.h>
-#include <iostream>
-#include <string>
-#include <cstring>
-#include "../packet.hpp"
 #include "../logger.cpp"
+#include "../packet.hpp"
 #include "../utils.hpp"
+#include <cstring>
+#include <iostream>
+#include <poll.h>
+#include <string>
+#include <unistd.h>
 
 using namespace std;
 
-static std::string senderStateToString(SenderState s)
-{
-    switch (s)
-    {
+const uint64_t TIMEOUT_MS = 1000;
+const uint8_t RETRIES = 100;
+
+static std::string senderStateToString(SenderState s) {
+    switch (s) {
     case SenderState::IDLE:
         return "IDLE";
     case SenderState::SYN_SENT:
@@ -43,26 +44,28 @@ static std::string senderStateToString(SenderState s)
 }
 
 Sender::Sender(const std::string &destIp, const int port)
-    : socketFd(-1), state(SenderState::IDLE), sw(WINDOW_SIZE)
-{
+    : socketFd(-1), state(SenderState::IDLE), window(0) {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (socketFd == -1)
-    {
-        LOG_ERROR("[SENDER-INIT] Failed to create UDP socket. Error: " + std::string(strerror(errno)));
-        throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
+    if (socketFd == -1) {
+        LOG_ERROR("[SENDER-INIT] Failed to create UDP socket. Error: " +
+                  std::string(strerror(errno)));
+        throw std::runtime_error("Failed to create socket: " +
+                                 std::string(strerror(errno)));
     }
 
     memset(&dst, 0, sizeof(dst));
     dst.sin_family = AF_INET; // use IPv4
     dst.sin_port = htons(port);
     inet_pton(AF_INET, destIp.c_str(), &dst.sin_addr); // destination IP
-    LOG_INFO(std::string("[SENDER-INIT] Successfully initialized. State: IDLE | Destination: ") + destIp + ":" + std::to_string(port) + " | Socket FD: " + std::to_string(socketFd));
+    LOG_INFO(
+        std::string("[SENDER-INIT] Successfully initialized. State: IDLE | "
+                    "Destination: ") +
+        destIp + ":" + std::to_string(port) +
+        " | Socket FD: " + std::to_string(socketFd));
 }
 
-Sender::~Sender()
-{
-    if (socketFd >= 0)
-    {
+Sender::~Sender() {
+    if (socketFd >= 0) {
         close(socketFd);
     }
 }
@@ -82,128 +85,246 @@ Currently basic version only. Keeps sending till the buffer is not empty.
 The method is responsible for keeping track of the size of the data to send.
 */
 {
-    if (this->socketFd < 0)
-    {
-        LOG_ERROR("[SEND-FILE] Invalid socket file descriptor. State: " + std::string(this->state == SenderState::IDLE ? "IDLE" : "OTHER"));
+    if (this->socketFd < 0) {
+        LOG_ERROR(
+            "[SEND-FILE] Invalid socket file descriptor. State: " +
+            std::string(this->state == SenderState::IDLE ? "IDLE" : "OTHER"));
         return false;
     }
 
-    if (!this->handshake())
-    {
-        LOG_ERROR("[SEND-FILE] Handshake failed. State: " + senderStateToString(this->state));
+    if (!this->handshake()) {
+        LOG_ERROR("[SEND-FILE] Handshake failed. State: " +
+                  senderStateToString(this->state));
         return false;
     }
 
-    if (this->state != SenderState::CONNECTED)
-    {
-        LOG_ERROR("[SEND-FILE] State machine error. Expected: CONNECTED, Actual: " + senderStateToString(this->state));
+    if (this->state != SenderState::CONNECTED) {
+        LOG_ERROR(
+            "[SEND-FILE] State machine error. Expected: CONNECTED, Actual: " +
+            senderStateToString(this->state));
         return false;
     }
 
-    if (fileData.empty())
-    {
-        LOG_WARNING("[SEND-FILE] Empty file data provided. State: CONNECTED | File size: 0 bytes");
+    if (fileData.empty()) {
+        LOG_WARNING(
+            "[SEND-FILE] Empty file data provided. State: CONNECTED | File "
+            "size: 0 bytes");
         return true;
     }
 
     size_t fileSize = fileData.size();
     size_t remainingSize = fileSize;
     size_t offset = 0;
-    uint32_t seqNo = 0;
-    LOG_INFO("[SEND-FILE] Starting file transmission. State: CONNECTED | Total size: " + std::to_string(fileSize) + " bytes");
+    uint32_t seqNo = SYN_SEQNO + 2;
+    LOG_INFO("[SEND-FILE] Starting file transmission. State: CONNECTED | Total "
+             "size: " +
+             std::to_string(fileSize) + " bytes");
 
-    while (remainingSize > 0)
-    {
-        this->waitForSlidingWindowSpace();
-
+    while (remainingSize > 0) {
         size_t thisSize = min<size_t>(MAX_PAYLOAD_SIZE, remainingSize);
         remainingSize -= thisSize;
         vector<char> packetData(thisSize);
-        std::copy(fileData.begin() + offset, fileData.begin() + offset + thisSize, packetData.begin());
+        std::copy(fileData.begin() + offset,
+                  fileData.begin() + offset + thisSize, packetData.begin());
         offset += thisSize;
         uint8_t flag = (remainingSize <= 0) ? FLAG_FIN : FLAG_DATA;
         auto pkt = makePacket(packetData, seqNo, flag);
-        if (pkt == nullptr)
-        {
-            LOG_ERROR("[SEND-FILE] Packet creation failed. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize) + " | Flag: " + std::to_string(flag));
+        if (pkt == nullptr) {
+            LOG_ERROR("[SEND-FILE] Packet creation failed. SeqNo: " +
+                      std::to_string(seqNo) +
+                      " | Payload size: " + std::to_string(thisSize) +
+                      " | Flag: " + std::to_string(flag));
             return false;
         }
-
-        if (!sendPacket(this->socketFd, this->dst, *pkt))
-        {
-            LOG_ERROR("[SEND-FILE] Failed to send packet. SeqNo: " + std::to_string(seqNo) + " | Payload size: " + std::to_string(thisSize));
+        if (this->sendTrackedPacket(pkt)) {
+            LOG_INFO(
+                "[SEND-FILE] Packet sent successfully. SeqNo: " +
+                std::to_string(seqNo) +
+                " | Payload size: " + std::to_string(thisSize) +
+                " | Flag: " + std::string(flag == FLAG_FIN ? "FIN" : "DATA") +
+                " | Remaining: " + std::to_string(remainingSize) + " bytes");
+        } else {
+            LOG_ERROR("[SEND-FILE] Failed to send tracked packet. SeqNo: " +
+                      std::to_string(seqNo) +
+                      " | Payload size: " + std::to_string(thisSize));
             return false;
         }
-
-        LOG_INFO(
-            "[SEND-FILE] Packet sent successfully. SeqNo: " + std::to_string(seqNo) + 
-            " | Payload size: " + std::to_string(thisSize) + 
-            " | Flag: " + std::string(flag == FLAG_FIN ? "FIN" : "DATA") + 
-            " | Remaining: " + std::to_string(remainingSize) + " bytes"
-        );
-
-        if (!this->sw.add(WindowSlot{std::move(pkt), 0}))
-        {
-            LOG_ERROR(
-                "[SEND-FILE] Failed to add packet to sliding window. SeqNo: " + std::to_string(seqNo) +
-                " | Window occupancy: " + std::to_string(this->sw.size()) + "/" + std::to_string(WINDOW_SIZE)
-            );
-            return false;
-        }
-
-        LOG_INFO(
-            "[SEND-FILE] Packet added to sliding window. SeqNo: " + std::to_string(seqNo) +
-            " | Window occupancy: " + std::to_string(this->sw.size()) + "/" + std::to_string(WINDOW_SIZE)
-        );
-
         seqNo++;
     }
 
-    LOG_INFO("[SEND-FILE] File transmission completed successfully. State: CONNECTED | Total packets sent: " + std::to_string(seqNo));
+    if (!this->drainOutstandingPackets()) {
+        LOG_WARNING("[SEND-FILE] Timed out before all outstanding packets were "
+                    "ACKed. State: CONNECTED | Remaining window size: " +
+                    std::to_string(this->window.size()));
+        return false;
+    }
+
+    LOG_INFO("[SEND-FILE] File transmission completed successfully. State: "
+             "CONNECTED | Total packets sent: " +
+             std::to_string(seqNo));
     return true;
 }
 
-bool Sender::handshake()
-{
-    if (this->socketFd < 0)
-    {
+bool Sender::sendTrackedPacket(std::unique_ptr<packet> &pkt) {
+    if (pkt == nullptr) {
+        LOG_ERROR("[SEND-TRACKED-PACKET] Cannot send null packet.");
+        return false;
+    }
+
+    while (this->window.isFull()) {
+        LOG_INFO("[SEND-TRACKED-PACKET] Window full. SeqNo: " +
+                 std::to_string(pkt->seqNo) + " | Waiting for ACK.");
+        if (!this->waitForWindowProgress()) {
+            LOG_ERROR(
+                "[SEND-TRACKED-PACKET] Failed while waiting for window to "
+                "make progress. SeqNo: " +
+                std::to_string(pkt->seqNo));
+            return false;
+        }
+    }
+
+    const uint32_t seqNo = pkt->seqNo;
+    const uint16_t payloadLen = pkt->payloadLen;
+    if (!sendPacket(this->socketFd, this->dst, *pkt)) {
+        LOG_ERROR("[SEND-TRACKED-PACKET] Failed to send packet. SeqNo: " +
+                  std::to_string(seqNo) +
+                  " | Payload size: " + std::to_string(payloadLen));
+        return false;
+    }
+
+    WindowSlot ws{std::move(pkt), 0};
+    if (!this->window.add(std::move(ws))) {
+        LOG_ERROR(
+            "[SEND-TRACKED-PACKET] Failed to add packet to window. SeqNo: " +
+            std::to_string(seqNo));
+        return false;
+    }
+
+    return true;
+}
+
+bool Sender::waitForWindowProgress() {
+    uint8_t retries = 0;
+
+    LOG_INFO("[WAIT-WINDOW] Waiting for data ACK. State: " +
+             senderStateToString(this->state) + " | Timeout: " +
+             std::to_string(TIMEOUT_MS) +
+             "ms | Max Retries: " + std::to_string(RETRIES));
+
+    while (retries < RETRIES) {
+        POOL_STATE pollState = waitForRead(socketFd, TIMEOUT_MS);
+        if (pollState == INTR) {
+            continue;
+        }
+
+        if (pollState == FAIL) {
+            LOG_ERROR("[WAIT-WINDOW] Poll failed while waiting for data ACK. "
+                      "State: " +
+                      senderStateToString(this->state));
+            return false;
+        }
+
+        if (pollState == TIMEOUT) {
+            retries++;
+            continue;
+        }
+
+        auto pkt = readPkt(this->socketFd, this->dst);
+        if (pkt == nullptr) {
+            LOG_ERROR("[WAIT-WINDOW] Failed to read packet while waiting for "
+                      "data ACK. State: " +
+                      senderStateToString(this->state));
+            return false;
+        }
+
+        if (pkt->flag != FLAG_ACK) {
+            LOG_WARNING("[WAIT-WINDOW] Ignoring non-ACK packet during data "
+                        "transfer. SeqNo: " +
+                        std::to_string(pkt->seqNo) +
+                        " | Flag: " + std::to_string(pkt->flag));
+            continue;
+        }
+
+        if (this->window.remove(pkt->seqNo)) {
+            LOG_INFO("[WAIT-WINDOW] Received cumulative ACK. AckSeqNo: " +
+                     std::to_string(pkt->seqNo) +
+                     " | Removed packet(s) from sliding window. Current "
+                     "window size: " +
+                     std::to_string(this->window.size()));
+            return true;
+        }
+
+        LOG_WARNING("[WAIT-WINDOW] Received ACK with no window progress. "
+                    "AckSeqNo: " +
+                    std::to_string(pkt->seqNo) +
+                    " | Current window size: " +
+                    std::to_string(this->window.size()));
+    }
+
+    LOG_ERROR("[WAIT-WINDOW] Retry attempts exhausted while waiting for data "
+              "ACK. Total attempts: " +
+              std::to_string(RETRIES) + " | State: " +
+              senderStateToString(this->state));
+    return false;
+}
+
+bool Sender::drainOutstandingPackets() {
+    LOG_INFO("[DRAIN-WINDOW] Draining outstanding packets. State: " +
+             senderStateToString(this->state) + " | Initial window size: " +
+             std::to_string(this->window.size()));
+
+    while (!this->window.isEmpty()) {
+        if (!this->waitForWindowProgress()) {
+            LOG_WARNING("[DRAIN-WINDOW] Timed out while waiting for remaining "
+                        "packet ACKs. Remaining window size: " +
+                        std::to_string(this->window.size()));
+            return false;
+        }
+    }
+
+    LOG_INFO("[DRAIN-WINDOW] All outstanding packets ACKed. State: " +
+             senderStateToString(this->state));
+    return true;
+}
+
+bool Sender::handshake() {
+    if (this->socketFd < 0) {
         LOG_ERROR("[HANDSHAKE] Invalid socket file descriptor. State: IDLE");
         return false;
     }
 
-    if (this->state != SenderState::IDLE)
-    {
-        LOG_ERROR("[HANDSHAKE] State machine error. Expected: IDLE, Actual: " + senderStateToString(this->state));
+    if (this->state != SenderState::IDLE) {
+        LOG_ERROR("[HANDSHAKE] State machine error. Expected: IDLE, Actual: " +
+                  senderStateToString(this->state));
         return false;
     }
 
     auto pkt = makeEmptyPacket();
     pkt->seqNo = SYN_SEQNO;
     pkt->flag = FLAG_SYN;
-    if (pkt == nullptr)
-    {
+    if (pkt == nullptr) {
         LOG_ERROR("[HANDSHAKE] Packet creation failed for SYN");
         return false;
     }
 
-    LOG_INFO("[HANDSHAKE] Sending SYN packet. State: IDLE -> SYN_SENT | SeqNo: " + std::to_string(pkt->seqNo));
-    if (!sendPacket(this->socketFd, this->dst, *pkt))
-    {
+    LOG_INFO(
+        "[HANDSHAKE] Sending SYN packet. State: IDLE -> SYN_SENT | SeqNo: " +
+        std::to_string(pkt->seqNo));
+    if (!sendPacket(this->socketFd, this->dst, *pkt)) {
         LOG_ERROR("[HANDSHAKE] Failed to send SYN packet. State: IDLE");
         return false;
     }
 
     this->state = SenderState::SYN_SENT;
-    LOG_INFO("[HANDSHAKE] State transition: SYN_SENT | Waiting for SYN-ACK response");
+    LOG_INFO("[HANDSHAKE] State transition: SYN_SENT | Waiting for SYN-ACK "
+             "response");
 
-    if (!waitForSynAck())
-    {
+    if (!waitForSynAck()) {
         LOG_ERROR("[HANDSHAKE] Failed to receive SYN-ACK. State: SYN_SENT");
         return false;
     }
 
-    if (!sendHandshakeAck())
-    {
+    if (!sendHandshakeAck()) {
         LOG_ERROR("[HANDSHAKE] Failed to send final ACK. State: SYN_ACK");
         return false;
     }
@@ -213,47 +334,53 @@ bool Sender::handshake()
     return true;
 }
 
-bool Sender::waitForSynAck()
-{
-    if (this->state != SenderState::SYN_SENT)
-    {
-        LOG_ERROR("[WAIT-SYNACK] State machine error. Expected: SYN_SENT, Actual: " + senderStateToString(this->state));
+bool Sender::waitForSynAck() {
+    if (this->state != SenderState::SYN_SENT) {
+        LOG_ERROR(
+            "[WAIT-SYNACK] State machine error. Expected: SYN_SENT, Actual: " +
+            senderStateToString(this->state));
         return false;
     }
 
-    const uint64_t TIMEOUT_MS = 1000;
-    const uint8_t RETRIES = 10;
-    LOG_INFO("[WAIT-SYNACK] Waiting for SYN-ACK response. State: SYN_SENT | Timeout: " + std::to_string(TIMEOUT_MS) + "ms | Max Retries: " + std::to_string(RETRIES));
-    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS)
-    {
-        LOG_ERROR("[WAIT-SYNACK] Timeout or error waiting for SYN-ACK. State: SYN_SENT");
+    LOG_INFO("[WAIT-SYNACK] Waiting for SYN-ACK response. State: SYN_SENT | "
+             "Timeout: " +
+             std::to_string(TIMEOUT_MS) +
+             "ms | Max Retries: " + std::to_string(RETRIES));
+    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS) {
+        LOG_ERROR("[WAIT-SYNACK] Timeout or error waiting for SYN-ACK. State: "
+                  "SYN_SENT");
         return false;
     }
 
     auto pkt = readPkt(socketFd, dst);
-    if (pkt == nullptr)
-    {
-        LOG_ERROR("[WAIT-SYNACK] Failed to read SYN-ACK packet. State: SYN_SENT");
+    if (pkt == nullptr) {
+        LOG_ERROR(
+            "[WAIT-SYNACK] Failed to read SYN-ACK packet. State: SYN_SENT");
         return false;
     }
-    if (pkt->flag == FLAG_SYN_ACK && pkt->seqNo == (SYN_SEQNO + 1))
-    {
-        LOG_INFO("[WAIT-SYNACK] Received valid SYN-ACK. State: SYN_SENT -> SYN_ACK | SeqNo: " + std::to_string(pkt->seqNo) + " | Flag: SYN_ACK");
+    if (pkt->flag == FLAG_SYN_ACK && pkt->seqNo == (SYN_SEQNO + 1)) {
+        LOG_INFO(
+            "[WAIT-SYNACK] Received valid SYN-ACK. State: SYN_SENT -> SYN_ACK "
+            "| SeqNo: " +
+            std::to_string(pkt->seqNo) + " | Flag: SYN_ACK");
         this->state = SenderState::SYN_ACK;
         return true;
     }
-    LOG_WARNING("[WAIT-SYNACK] Received packet with unexpected values. SeqNo: " + std::to_string(pkt->seqNo) + " | Flag: " + std::to_string(pkt->flag) + " | Expected SeqNo: " + std::to_string(SYN_SEQNO + 1) + " | Expected Flag: SYN_ACK");
+    LOG_WARNING(
+        "[WAIT-SYNACK] Received packet with unexpected values. SeqNo: " +
+        std::to_string(pkt->seqNo) + " | Flag: " + std::to_string(pkt->flag) +
+        " | Expected SeqNo: " + std::to_string(SYN_SEQNO + 1) +
+        " | Expected Flag: SYN_ACK");
     return false;
 }
 
-bool Sender::sendHandshakeAck()
-{
+bool Sender::sendHandshakeAck() {
     auto ackPkt = makeEmptyPacket();
     ackPkt->seqNo = 1;
     ackPkt->flag = FLAG_ACK;
-    LOG_INFO("[SEND-ACK] Sending final ACK packet. State: SYN_ACK | SeqNo: " + std::to_string(ackPkt->seqNo) + " | Flag: ACK");
-    if (!sendPacket(this->socketFd, this->dst, *ackPkt))
-    {
+    LOG_INFO("[SEND-ACK] Sending final ACK packet. State: SYN_ACK | SeqNo: " +
+             std::to_string(ackPkt->seqNo) + " | Flag: ACK");
+    if (!sendPacket(this->socketFd, this->dst, *ackPkt)) {
         LOG_ERROR("[SEND-ACK] Failed to send ACK packet. State: SYN_ACK");
         return false;
     }
