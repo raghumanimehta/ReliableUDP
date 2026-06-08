@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include <poll.h>
 #include <errno.h>
+#include <cstring>
 #include "logger.cpp"
 
 POOL_STATE waitForRead(int fd, uint64_t timeoutMs)

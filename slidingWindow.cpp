@@ -33,13 +33,19 @@ void SlidingWindow::startTimer() {
 
 bool SlidingWindow::add(WindowSlot w) 
 {
-    if (this->slots.size() >= WINDOW_SIZE) {
-        LOG_INFO("Window full");
+    if (w.pkt == nullptr) {
+        LOG_ERROR("Attempted to add a null packet to the sliding window");
         return false;
     }
 
-    if (this->slots.find(w.packet->seqNo) == this->slots.end())  {
-        this->slots.emplace(w.packet->seqNo, std::move(w));
+	if (this->slots.size() >= WINDOW_SIZE) {
+		return false;
+	}
+
+    const uint32_t seqNo = w.pkt->seqNo;
+
+    if (this->slots.find(seqNo) == this->slots.end())  {
+        this->slots.emplace(seqNo, std::move(w));
 
         if (!this->isTimerRunning) {
             startTimer();
@@ -101,7 +107,7 @@ std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit()
     std::vector<std::unique_ptr<packet>> ret;
     for (auto& p: slots) 
     {
-        auto copy = std::make_unique<packet>(*p.second.packet);
+        auto copy = std::make_unique<packet>(*p.second.pkt);
         ret.push_back(std::move(copy));
     }
     return ret;

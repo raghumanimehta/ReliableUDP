@@ -70,6 +70,14 @@ Sender::~Sender() {
     }
 }
 
+void Sender::waitForSlidingWindowSpace()
+{
+    while (this->sw.isFull())
+    {
+        LOG_INFO("[SEND-FILE] Waiting for window to open up");
+    }    
+}
+
 bool Sender::sendFile(const std::vector<char> &fileData)
 /*
 Sends the file over UDP connection.
