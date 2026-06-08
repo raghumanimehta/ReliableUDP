@@ -70,14 +70,6 @@ Sender::~Sender() {
     }
 }
 
-void Sender::waitForSlidingWindowSpace()
-{
-    while (this->sw.isFull())
-    {
-        LOG_INFO("[SEND-FILE] Waiting for window to open up");
-    }    
-}
-
 bool Sender::sendFile(const std::vector<char> &fileData)
 /*
 Sends the file over UDP connection.
@@ -207,8 +199,8 @@ bool Sender::waitForWindowProgress() {
     uint8_t retries = 0;
 
     LOG_INFO("[WAIT-WINDOW] Waiting for data ACK. State: " +
-             senderStateToString(this->state) + " | Timeout: " +
-             std::to_string(TIMEOUT_MS) +
+             senderStateToString(this->state) +
+             " | Timeout: " + std::to_string(TIMEOUT_MS) +
              "ms | Max Retries: " + std::to_string(RETRIES));
 
     while (retries < RETRIES) {
@@ -256,22 +248,21 @@ bool Sender::waitForWindowProgress() {
 
         LOG_WARNING("[WAIT-WINDOW] Received ACK with no window progress. "
                     "AckSeqNo: " +
-                    std::to_string(pkt->seqNo) +
-                    " | Current window size: " +
+                    std::to_string(pkt->seqNo) + " | Current window size: " +
                     std::to_string(this->window.size()));
     }
 
     LOG_ERROR("[WAIT-WINDOW] Retry attempts exhausted while waiting for data "
               "ACK. Total attempts: " +
-              std::to_string(RETRIES) + " | State: " +
-              senderStateToString(this->state));
+              std::to_string(RETRIES) +
+              " | State: " + senderStateToString(this->state));
     return false;
 }
 
 bool Sender::drainOutstandingPackets() {
     LOG_INFO("[DRAIN-WINDOW] Draining outstanding packets. State: " +
-             senderStateToString(this->state) + " | Initial window size: " +
-             std::to_string(this->window.size()));
+             senderStateToString(this->state) +
+             " | Initial window size: " + std::to_string(this->window.size()));
 
     while (!this->window.isEmpty()) {
         if (!this->waitForWindowProgress()) {
