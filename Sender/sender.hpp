@@ -35,6 +35,7 @@ private:
   bool sendHandshakeAck();
   bool sendTrackedPacket(std::unique_ptr<packet> &pkt);
   bool waitForWindowProgress();
+  bool drainOutstandingPackets();
 
 public:
   Sender(const std::string &destIp, const int port);

@@ -144,6 +144,13 @@ The method is responsible for keeping track of the size of the data to send.
         seqNo++;
     }
 
+    if (!this->drainOutstandingPackets()) {
+        LOG_WARNING("[SEND-FILE] Timed out before all outstanding packets were "
+                    "ACKed. State: CONNECTED | Remaining window size: " +
+                    std::to_string(this->window.size()));
+        return false;
+    }
+
     LOG_INFO("[SEND-FILE] File transmission completed successfully. State: "
              "CONNECTED | Total packets sent: " +
              std::to_string(seqNo));
@@ -251,6 +258,25 @@ bool Sender::waitForWindowProgress() {
               std::to_string(RETRIES) + " | State: " +
               senderStateToString(this->state));
     return false;
+}
+
+bool Sender::drainOutstandingPackets() {
+    LOG_INFO("[DRAIN-WINDOW] Draining outstanding packets. State: " +
+             senderStateToString(this->state) + " | Initial window size: " +
+             std::to_string(this->window.size()));
+
+    while (!this->window.isEmpty()) {
+        if (!this->waitForWindowProgress()) {
+            LOG_WARNING("[DRAIN-WINDOW] Timed out while waiting for remaining "
+                        "packet ACKs. Remaining window size: " +
+                        std::to_string(this->window.size()));
+            return false;
+        }
+    }
+
+    LOG_INFO("[DRAIN-WINDOW] All outstanding packets ACKed. State: " +
+             senderStateToString(this->state));
+    return true;
 }
 
 bool Sender::handshake() {
