@@ -1,43 +1,41 @@
 /**
-Receiver class. The class encapsulates the logic for receiving files using UDP. 
+Receiver class. The class encapsulates the logic for receiving files using UDP.
  */
-#ifndef RECEIVER_HPP          
+#ifndef RECEIVER_HPP
 #define RECEIVER_HPP
 
-#include <string>
-#include <vector>  
 #include <netinet/in.h>
+#include <string>
+#include <vector>
 
 #define PORT 8080
 
-
-enum class ReceieverState : uint8_t 
-{
+enum class ReceieverState : uint8_t {
     IDLE = 0,
     SYN_RECV = 1,
     ACK_SENT = 2,
     CONNECTED = 3,
     CLOSING_INIT = 4,
     CLOSING = 5,
-    CLOSED = 6  
+    CLOSED = 6
 };
 
-class Receiver 
-{
-private:
+class Receiver {
+  private:
     struct sockaddr_in origin;
     int socketFd;
     ReceieverState state;
-    bool handshake(); 
-    bool waitAndUpdateState(uint64_t timeout, uint32_t retries, uint32_t expectedSeqNo,  uint8_t expectedFlag, ReceieverState nextState);
+    bool handshake();
+    bool waitAndUpdateState(uint64_t timeout, uint32_t retries,
+                            uint32_t expectedSeqNo, uint8_t expectedFlag,
+                            ReceieverState nextState);
 
-public:
-    Receiver(); 
-    
+  public:
+    Receiver();
+
     ~Receiver();
 
-    bool receiveFile();  // Receive and save file
-
-}; 
+    bool receiveFile(); // Receive and save file
+};
 
 #endif

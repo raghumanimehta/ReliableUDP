@@ -33,6 +33,7 @@ private:
   bool handshake();
   bool waitForSynAck();
   bool sendHandshakeAck();
+  bool sendTrackedPacket(std::unique_ptr<packet> &pkt);
 
 public:
   Sender(const std::string &destIp, const int port);
