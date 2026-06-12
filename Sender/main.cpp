@@ -45,22 +45,24 @@ int main(int argc, char* argv[]) {
     // argc: number of arguments
     // argv: array of C-style strings (arguments)
 
-    if (argc != 2) {
-        cout << "Incorrect number of arguments. Expected: 2. Actual: " << argc << endl;
+    if (argc < 2 || argc > 3) {
+        cout << "Usage: " << argv[0] << " <file_path> [destination_ip]" << endl;
         return 1;
     }
 
     string filePath = argv[1]; 
+    string destIp = (argc == 3) ? argv[2] : "127.0.0.1";
+
     vector<char> fileData = readFile(filePath);
 
     if (fileData.empty()) {
-        cout << "File is empty, nothing to send" << endl;
+        cout << "File is empty or could not be read, nothing to send" << endl;
         return 1;  // Exit if no data to send
     }
 
-    // Create sender object with destination IP and port (hard coded to be changed)
+    // Create sender object with destination IP and port
     try {
-        Sender sender("127.0.0.1", 8080);  // localhost, port 12345 
+        Sender sender(destIp, 8080);  
         
         // Send the file
         bool success = sender.sendFile(fileData);
