@@ -28,9 +28,9 @@ struct packet {
 
 std::unique_ptr<packet> makePacket(std::vector<char>& packetData, uint32_t seqNo, uint8_t flag);
 std::unique_ptr<packet> makeEmptyPacket();
-std::vector<char> serializePacket(const struct packet& pkt);
+std::vector<char> serializePacket(const std::unique_ptr<packet>& pkt);
 std::unique_ptr<packet> deserializePacket(std::vector<char>& dataBuffer);
-bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt);
+bool sendPacket(int socketFd, const struct sockaddr_in& dst, const std::unique_ptr<packet>& pkt);
 std::unique_ptr<packet> readPkt(int socketFd, struct sockaddr_in& dst);
 
 #endif 

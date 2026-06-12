@@ -40,26 +40,26 @@ unique_ptr<packet> makeEmptyPacket()
     return out; 
 }
 
-vector<char> serializePacket(const struct packet& pkt) {
-    size_t totalSize = HEADER_SIZE + pkt.payloadLen;
+vector<char> serializePacket(const unique_ptr<packet>& pkt) {
+    size_t totalSize = HEADER_SIZE + pkt->payloadLen;
     std::vector<char> result(totalSize);
     
     char* buffer = result.data();
     size_t offset = 0;
 
-    uint32_t netSeqNo = htonl(pkt.seqNo);
+    uint32_t netSeqNo = htonl(pkt->seqNo);
     std::memcpy(buffer + offset, &netSeqNo, sizeof(netSeqNo));
     offset += sizeof(netSeqNo);
 
-    uint16_t netPayloadLen = htons(pkt.payloadLen); 
+    uint16_t netPayloadLen = htons(pkt->payloadLen); 
     std::memcpy(buffer + offset, &netPayloadLen, sizeof(netPayloadLen));
     offset += sizeof(netPayloadLen);
 
-    std::memcpy(buffer + offset, &pkt.flag, sizeof(uint8_t));   
+    std::memcpy(buffer + offset, &pkt->flag, sizeof(uint8_t));   
     offset += sizeof(uint8_t);
 
-    if (pkt.payloadLen > 0) {
-        std::memcpy(buffer + offset, pkt.payload, pkt.payloadLen);
+    if (pkt->payloadLen > 0) {
+        std::memcpy(buffer + offset, pkt->payload, pkt->payloadLen);
     }
 
     return result;
@@ -70,15 +70,15 @@ vector<char> serializePacket(const struct packet& pkt) {
 #include <string>
 #include "logger.cpp"
 
-bool sendPacket(int socketFd, const struct sockaddr_in& dst, const packet& pkt) {
+bool sendPacket(int socketFd, const struct sockaddr_in& dst, const unique_ptr<packet>& pkt) {
     std::vector<char> serializedPkt = serializePacket(pkt);
     ssize_t sentBytes = sendto(socketFd, serializedPkt.data(), serializedPkt.size(), 0,
                         (const struct sockaddr*)&dst, sizeof(dst));
     if (sentBytes == -1) {
-        LOG_ERROR("[SEND-PACKET] Failed to send packet. SeqNo: " + std::to_string(pkt.seqNo) + " | Payload size: " + std::to_string(pkt.payloadLen) + " | Error: " + std::string(strerror(errno)));
+        LOG_ERROR("[SEND-PACKET] Failed to send packet. SeqNo: " + std::to_string(pkt->seqNo) + " | Payload size: " + std::to_string(pkt->payloadLen) + " | Error: " + std::string(strerror(errno)));
         return false;
     }
-    LOG_INFO("[SEND-PACKET] Packet sent successfully. SeqNo: " + std::to_string(pkt.seqNo) + " | Payload size: " + std::to_string(pkt.payloadLen) + " | Total bytes sent: " + std::to_string(sentBytes));
+    LOG_INFO("[SEND-PACKET] Packet sent successfully. SeqNo: " + std::to_string(pkt->seqNo) + " | Payload size: " + std::to_string(pkt->payloadLen) + " | Total bytes sent: " + std::to_string(sentBytes));
     return true;
 }
 

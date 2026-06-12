@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <sstream>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -12,8 +12,9 @@
 static const std::chrono::milliseconds TIMEOUT_MS =
     std::chrono::milliseconds(1000);
 
-SlidingWindow::SlidingWindow(uint32_t base, size_t window_size)
-    : slots(), base(base), nextSeqNo(0),
+SlidingWindow::SlidingWindow(uint32_t base, size_t window_size,
+                             uint8_t maxRetransmitCount)
+    : slots(), base(base), nextSeqNo(0), maxRetransmitCount(maxRetransmitCount),
       timerStart(std::chrono::steady_clock::now()), isTimerRunning(false) {
     this->window_size = window_size;
     this->slots.reserve(window_size);
@@ -50,7 +51,7 @@ bool SlidingWindow::add(WindowSlot w) {
                  " to window");
         return true;
     }
-    LOG_WARNING("pkt with seqNo: " + std::to_string(w.pkt->seqNo) +
+    LOG_WARNING("pkt with seqNo: " + std::to_string(seqNo) +
                 " already in the sliding window");
     return false;
 }
@@ -100,11 +101,29 @@ bool SlidingWindow::isTimedOut() {
     return elapsed >= TIMEOUT_MS;
 }
 
-std::vector<std::unique_ptr<packet>> SlidingWindow::getPktsForRetransmit() {
+std::optional<std::vector<std::unique_ptr<packet>>>
+SlidingWindow::getPktsForRetransmit() {
     std::vector<std::unique_ptr<packet>> ret;
-    for (auto &p : slots) {
-        auto copy = std::make_unique<packet>(*p.second.pkt);
+    for (auto &[seqNo, ws] : slots) {
+        if (ws.retransmitCount == this->maxRetransmitCount) {
+            LOG_ERROR("[SLIDING-WINDOW] Packet reached max retransmission count. SeqNo: " +
+                      std::to_string(seqNo) + " | Max: " + std::to_string(this->maxRetransmitCount));
+            return std::nullopt;
+        }
+        auto copy = std::make_unique<packet>(*ws.pkt);
+        ws.retransmitCount++;
+        LOG_INFO("[SLIDING-WINDOW] Preparing retransmission for packet. SeqNo: " + std::to_string(seqNo) +
+                 " | Attempt: " + std::to_string(ws.retransmitCount) + "/" + std::to_string(this->maxRetransmitCount));
         ret.push_back(std::move(copy));
     }
     return ret;
+}
+
+bool SlidingWindow::resetTimer() {
+    if (!isTimerRunning) {
+        LOG_WARNING("resetTimer called when timer was off.");
+        return false;
+    }
+    this->startTimer();
+    return true;
 }

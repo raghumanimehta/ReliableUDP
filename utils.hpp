@@ -7,14 +7,14 @@
 // maxRetries - number of poll retries; 0 means "wait indefinitely".
 // Returns:  1 if readable, 0 on timeout (retries exhausted), -1 on error.
 
-enum POOL_STATE {
+enum POLL_STATE {
     SUCCESS,
     FAIL,
     INTR,
     TIMEOUT
 };
 
-POOL_STATE waitForRead(int fd, uint64_t timeoutMs);
-POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint32_t maxRetries);
+POLL_STATE waitForRead(int fd, uint64_t timeoutMs);
+POLL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint32_t maxRetries);
 
 #endif

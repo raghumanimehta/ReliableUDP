@@ -18,12 +18,12 @@
 - [x] Implement file reading and sending logic on the client
 - [x] Implement file writing logic on the server
 - [x] Add packet sequence numbering
-- [ ] Implement basic ACK system
+- [x] Implement basic ACK system
 - [ ] Add retransmission mechanism with timeouts
-- [ ] Define and document end-of-file signaling
+- [x] Define and document end-of-file signaling
 
 ### Testing and Validation
-- [ ] Test file transfers under normal conditions
+- [x] Test file transfers under normal conditions
 - [ ] Simulate packet loss and validate reliability
 - [ ] Log transfer statistics (e.g., number of packets sent, retransmissions)
 

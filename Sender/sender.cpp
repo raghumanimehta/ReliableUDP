@@ -1,6 +1,7 @@
 #include "sender.hpp"
 
 // Required for socket functions
+#include <memory>
 #include <sys/socket.h>
 
 // Required for address structures
@@ -14,7 +15,6 @@
 #include "../packet.hpp"
 #include "../utils.hpp"
 #include <cstring>
-#include <iostream>
 #include <poll.h>
 #include <string>
 #include <unistd.h>
@@ -22,7 +22,6 @@
 using namespace std;
 
 const uint64_t TIMEOUT_MS = 1000;
-const uint8_t RETRIES = 100;
 
 static std::string senderStateToString(SenderState s) {
     switch (s) {
@@ -44,7 +43,8 @@ static std::string senderStateToString(SenderState s) {
 }
 
 Sender::Sender(const std::string &destIp, const int port)
-    : socketFd(-1), state(SenderState::IDLE), window(0, WINDOW_SIZE) {
+    : socketFd(-1), state(SenderState::IDLE),
+      window(0, WINDOW_SIZE, MAX_RETRANSMIT_COUNT) {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd == -1) {
         LOG_ERROR("[SENDER-INIT] Failed to create UDP socket. Error: " +
@@ -177,7 +177,7 @@ bool Sender::sendTrackedPacket(std::unique_ptr<packet> &pkt) {
 
     const uint32_t seqNo = pkt->seqNo;
     const uint16_t payloadLen = pkt->payloadLen;
-    if (!sendPacket(this->socketFd, this->dst, *pkt)) {
+    if (!sendPacket(this->socketFd, this->dst, pkt)) {
         LOG_ERROR("[SEND-TRACKED-PACKET] Failed to send packet. SeqNo: " +
                   std::to_string(seqNo) +
                   " | Payload size: " + std::to_string(payloadLen));
@@ -195,16 +195,42 @@ bool Sender::sendTrackedPacket(std::unique_ptr<packet> &pkt) {
     return true;
 }
 
+bool Sender::sendUnackedPkts() {
+    std::optional<std::vector<std::unique_ptr<packet>>> pkts =
+        this->window.getPktsForRetransmit();
+    if (!pkts.has_value()) {
+        return false;
+    }
+    LOG_INFO("[SEND-UNACKED-PKTS] Retransmitting " +
+             std::to_string(pkts->size()) + " packets from window.");
+    for (auto &pkt : *pkts) {
+        if (!sendPacket(this->socketFd, this->dst, pkt)) {
+            LOG_ERROR("[SEND-UNACKED-PKTS] Failed to send packet during "
+                      "retransmission. SeqNo: " +
+                      std::to_string(pkt->seqNo));
+            return false;
+        }
+    }
+    return true;
+}
+
 bool Sender::waitForWindowProgress() {
-    uint8_t retries = 0;
+    uint32_t retries = 1000;
 
     LOG_INFO("[WAIT-WINDOW] Waiting for data ACK. State: " +
              senderStateToString(this->state) +
-             " | Timeout: " + std::to_string(TIMEOUT_MS) +
-             "ms | Max Retries: " + std::to_string(RETRIES));
+             " | Timeout: 100ms poll | Max Retries: 1000 countdown");
 
-    while (retries < RETRIES) {
-        POOL_STATE pollState = waitForRead(socketFd, TIMEOUT_MS);
+    while (retries > 0) {
+        if (this->window.isTimedOut()) {
+            if (!this->sendUnackedPkts()) {
+                LOG_ERROR("[WAIT-WINDOW] Retransmission failed or max retransmit limit reached. Aborting.");
+                return false;
+            }
+            this->window.resetTimer();
+            retries = 1000;
+        }
+        POLL_STATE pollState = waitForRead(socketFd, 100);
         if (pollState == INTR) {
             continue;
         }
@@ -217,7 +243,7 @@ bool Sender::waitForWindowProgress() {
         }
 
         if (pollState == TIMEOUT) {
-            retries++;
+            retries--;
             continue;
         }
 
@@ -253,9 +279,8 @@ bool Sender::waitForWindowProgress() {
     }
 
     LOG_ERROR("[WAIT-WINDOW] Retry attempts exhausted while waiting for data "
-              "ACK. Total attempts: " +
-              std::to_string(RETRIES) +
-              " | State: " + senderStateToString(this->state));
+              "ACK. State: " +
+              senderStateToString(this->state));
     return false;
 }
 
@@ -301,7 +326,7 @@ bool Sender::handshake() {
     LOG_INFO(
         "[HANDSHAKE] Sending SYN packet. State: IDLE -> SYN_SENT | SeqNo: " +
         std::to_string(pkt->seqNo));
-    if (!sendPacket(this->socketFd, this->dst, *pkt)) {
+    if (!sendPacket(this->socketFd, this->dst, pkt)) {
         LOG_ERROR("[HANDSHAKE] Failed to send SYN packet. State: IDLE");
         return false;
     }
@@ -333,35 +358,47 @@ bool Sender::waitForSynAck() {
         return false;
     }
 
+    uint32_t retries = 0;
+    const uint32_t maxHandshakeRetries = 5;
+
     LOG_INFO("[WAIT-SYNACK] Waiting for SYN-ACK response. State: SYN_SENT | "
-             "Timeout: " +
-             std::to_string(TIMEOUT_MS) +
-             "ms | Max Retries: " + std::to_string(RETRIES));
-    if (waitForReadWithRetry(socketFd, TIMEOUT_MS, RETRIES) != SUCCESS) {
-        LOG_ERROR("[WAIT-SYNACK] Timeout or error waiting for SYN-ACK. State: "
-                  "SYN_SENT");
-        return false;
+             "Timeout: " + std::to_string(TIMEOUT_MS) + "ms | Max Handshake Retries: " +
+             std::to_string(maxHandshakeRetries));
+
+    while (retries < maxHandshakeRetries) {
+        POLL_STATE pollState = waitForRead(socketFd, TIMEOUT_MS);
+        if (pollState == SUCCESS) {
+            auto pkt = readPkt(socketFd, dst);
+            if (pkt == nullptr) {
+                LOG_ERROR("[WAIT-SYNACK] Failed to read SYN-ACK packet. State: SYN_SENT");
+                return false;
+            }
+            if (pkt->flag == FLAG_SYN_ACK && pkt->seqNo == (SYN_SEQNO + 1)) {
+                LOG_INFO("[WAIT-SYNACK] Received valid SYN-ACK. State: SYN_SENT -> SYN_ACK | SeqNo: " +
+                         std::to_string(pkt->seqNo) + " | Flag: SYN_ACK");
+                this->state = SenderState::SYN_ACK;
+                return true;
+            }
+            LOG_WARNING("[WAIT-SYNACK] Received unexpected packet. SeqNo: " +
+                        std::to_string(pkt->seqNo) + " | Flag: " + std::to_string(pkt->flag));
+        } else if (pollState == TIMEOUT) {
+            retries++;
+            LOG_WARNING("[WAIT-SYNACK] Timeout waiting for SYN-ACK. Retransmitting SYN packet. Retry: " +
+                        std::to_string(retries) + "/" + std::to_string(maxHandshakeRetries));
+            auto synPkt = makeEmptyPacket();
+            synPkt->seqNo = SYN_SEQNO;
+            synPkt->flag = FLAG_SYN;
+            if (!sendPacket(this->socketFd, this->dst, synPkt)) {
+                LOG_ERROR("[WAIT-SYNACK] Failed to retransmit SYN packet.");
+                return false;
+            }
+        } else if (pollState == FAIL) {
+            LOG_ERROR("[WAIT-SYNACK] Poll failed waiting for SYN-ACK.");
+            return false;
+        }
     }
 
-    auto pkt = readPkt(socketFd, dst);
-    if (pkt == nullptr) {
-        LOG_ERROR(
-            "[WAIT-SYNACK] Failed to read SYN-ACK packet. State: SYN_SENT");
-        return false;
-    }
-    if (pkt->flag == FLAG_SYN_ACK && pkt->seqNo == (SYN_SEQNO + 1)) {
-        LOG_INFO(
-            "[WAIT-SYNACK] Received valid SYN-ACK. State: SYN_SENT -> SYN_ACK "
-            "| SeqNo: " +
-            std::to_string(pkt->seqNo) + " | Flag: SYN_ACK");
-        this->state = SenderState::SYN_ACK;
-        return true;
-    }
-    LOG_WARNING(
-        "[WAIT-SYNACK] Received packet with unexpected values. SeqNo: " +
-        std::to_string(pkt->seqNo) + " | Flag: " + std::to_string(pkt->flag) +
-        " | Expected SeqNo: " + std::to_string(SYN_SEQNO + 1) +
-        " | Expected Flag: SYN_ACK");
+    LOG_ERROR("[WAIT-SYNACK] Max handshake retry attempts exhausted. Handshake failed.");
     return false;
 }
 
@@ -371,7 +408,7 @@ bool Sender::sendHandshakeAck() {
     ackPkt->flag = FLAG_ACK;
     LOG_INFO("[SEND-ACK] Sending final ACK packet. State: SYN_ACK | SeqNo: " +
              std::to_string(ackPkt->seqNo) + " | Flag: ACK");
-    if (!sendPacket(this->socketFd, this->dst, *ackPkt)) {
+    if (!sendPacket(this->socketFd, this->dst, ackPkt)) {
         LOG_ERROR("[SEND-ACK] Failed to send ACK packet. State: SYN_ACK");
         return false;
     }

@@ -15,6 +15,7 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 struct packet;
 
 constexpr size_t WINDOW_SIZE = 10;
+constexpr size_t MAX_RETRANSMIT_COUNT = 3;
 
 enum class SenderState : uint8_t {
     IDLE = 0,
@@ -36,6 +37,7 @@ class Sender {
     bool waitForSynAck();
     bool sendHandshakeAck();
     bool sendTrackedPacket(std::unique_ptr<packet> &pkt);
+    bool sendUnackedPkts();
     bool waitForWindowProgress();
     bool drainOutstandingPackets();
 

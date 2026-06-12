@@ -110,7 +110,7 @@ bool Receiver::sendAck(uint32_t seqNo) {
     LOG_INFO("[SEND-ACK] Sending ACK packet. State: " +
              receiverStateToString(this->state) +
              " | AckSeqNo: " + std::to_string(ackPkt->seqNo));
-    return sendPacket(this->socketFd, this->origin, *ackPkt);
+    return sendPacket(this->socketFd, this->origin, ackPkt);
 }
 
 bool Receiver::isBufferFull() const {
@@ -285,23 +285,58 @@ bool Receiver::handshake() {
              " -> ACK_SENT"
              "\n  SeqNo: " +
              std::to_string(sendPkt->seqNo) + "\n  Flag: SYN_ACK");
-    if (!sendPacket(this->socketFd, this->origin, *sendPkt)) {
+    if (!sendPacket(this->socketFd, this->origin, sendPkt)) {
         LOG_ERROR("[HANDSHAKE] Failed to send SYN-ACK packet. State: " +
                   receiverStateToString(this->state));
         return false;
     }
     this->state = ReceieverState::ACK_SENT;
 
-    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, this->expectedSeqNo,
-                                 FLAG_ACK, ReceieverState::CONNECTED)) {
-        LOG_INFO("[HANDSHAKE] Received valid ACK packet.\n"
-                 "  State: " +
-                 receiverStateToString(this->state) +
-                 " -> CONNECTED"
-                 "\n  SeqNo: " +
-                 std::to_string(this->expectedSeqNo) + "\n  Flag: ACK");
-        this->expectedSeqNo++;
-    } else {
+    uint32_t finalAckRetries = 0;
+    const uint32_t maxFinalAckRetries = 10;
+    bool ackReceived = false;
+
+    while (finalAckRetries < maxFinalAckRetries) {
+        POLL_STATE pollState = waitForRead(socketFd, TIMEOUT_MS);
+        if (pollState == SUCCESS) {
+            auto pkt = readPkt(socketFd, origin);
+            if (pkt == nullptr) {
+                LOG_ERROR("[HANDSHAKE] Failed to read final ACK packet. State: ACK_SENT");
+                return false;
+            }
+            if (pkt->flag == FLAG_ACK && pkt->seqNo == this->expectedSeqNo) {
+                LOG_INFO("[HANDSHAKE] Received valid ACK packet.\n"
+                         "  State: " +
+                         receiverStateToString(this->state) +
+                         " -> CONNECTED"
+                         "\n  SeqNo: " +
+                         std::to_string(this->expectedSeqNo) + "\n  Flag: ACK");
+                this->state = ReceieverState::CONNECTED;
+                this->expectedSeqNo++;
+                ackReceived = true;
+                break;
+            }
+            LOG_WARNING("[HANDSHAKE] Received unexpected packet while waiting for final ACK. SeqNo: " +
+                        std::to_string(pkt->seqNo) + " | Flag: " + std::to_string(pkt->flag));
+        } else if (pollState == TIMEOUT) {
+            finalAckRetries++;
+            LOG_WARNING("[HANDSHAKE] Timeout waiting for final ACK. Retransmitting SYN-ACK response. Retry: " +
+                        std::to_string(finalAckRetries) + "/" + std::to_string(maxFinalAckRetries));
+            auto retryPkt = makeEmptyPacket();
+            retryPkt->flag = FLAG_SYN_ACK;
+            retryPkt->seqNo = this->expectedSeqNo;
+            if (!sendPacket(this->socketFd, this->origin, retryPkt)) {
+                LOG_ERROR("[HANDSHAKE] Failed to retransmit SYN-ACK packet.");
+                return false;
+            }
+        } else if (pollState == FAIL) {
+            LOG_ERROR("[HANDSHAKE] Poll failed while waiting for final ACK.");
+            return false;
+        }
+    }
+
+    if (!ackReceived) {
+        LOG_ERROR("[HANDSHAKE] Max handshake retry attempts reached waiting for final ACK. Handshake failed.");
         return false;
     }
     LOG_INFO("[HANDSHAKE] Three-way handshake completed successfully.\n"

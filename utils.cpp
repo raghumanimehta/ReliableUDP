@@ -4,7 +4,7 @@
 #include <cstring>
 #include "logger.cpp"
 
-POOL_STATE waitForRead(int fd, uint64_t timeoutMs)
+POLL_STATE waitForRead(int fd, uint64_t timeoutMs)
 {
     struct pollfd pfd;
     pfd.fd = fd;
@@ -23,10 +23,10 @@ POOL_STATE waitForRead(int fd, uint64_t timeoutMs)
     }
 }
 
-POOL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint32_t maxRetries)
+POLL_STATE waitForReadWithRetry(int fd, uint64_t timeoutMs, uint32_t maxRetries)
 {
     uint8_t retries = 0;
-    POOL_STATE pollState;
+    POLL_STATE pollState;
 
     while (retries < maxRetries)
     {
