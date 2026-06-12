@@ -263,7 +263,7 @@ bool Receiver::handshake() {
              "\n  Waiting for SYN packet from sender");
 
     const uint64_t TIMEOUT_MS = 1000;
-    const uint8_t RETRIES = 10;
+    const uint32_t RETRIES = 100;
     if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, this->expectedSeqNo,
                                  FLAG_SYN, ReceieverState::SYN_RECV)) {
         LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
@@ -291,9 +291,9 @@ bool Receiver::handshake() {
         return false;
     }
     this->state = ReceieverState::ACK_SENT;
-
+ 
     uint32_t finalAckRetries = 0;
-    const uint32_t maxFinalAckRetries = 10;
+    const uint32_t maxFinalAckRetries = 100;
     bool ackReceived = false;
 
     while (finalAckRetries < maxFinalAckRetries) {
