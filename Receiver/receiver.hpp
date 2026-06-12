@@ -5,6 +5,8 @@ Receiver class. The class encapsulates the logic for receiving files using UDP.
 #define RECEIVER_HPP
 
 #include "../packet.hpp"
+#include <cstdint>
+#include <fstream>
 #include <map>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -29,6 +31,7 @@ class Receiver {
     int socketFd;
     ReceieverState state;
     std::map<uint32_t, std::unique_ptr<packet>> rxBuffer;
+    uint32_t expectedSeqNo;
     bool handshake();
     bool waitAndUpdateState(uint64_t timeout, uint32_t retries,
                             uint32_t expectedSeqNo, uint8_t expectedFlag,
@@ -37,6 +40,7 @@ class Receiver {
     bool sendAck(uint32_t seqNo);
     bool isBufferFull() const;
     bool addToBuffer(std::unique_ptr<packet> pkt);
+    void drainBufferedPackets(std::ofstream& outFile);
 
   public:
     Receiver();

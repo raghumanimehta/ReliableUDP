@@ -2,6 +2,7 @@
 
 // Required for socket functions
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <sys/socket.h>
 
@@ -47,7 +48,7 @@ static std::string receiverStateToString(ReceieverState s) {
     }
 }
 
-Receiver::Receiver() : socketFd(-1) {
+Receiver::Receiver() : socketFd(-1), expectedSeqNo(0) {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd == -1) {
         LOG_ERROR("[RECEIVER-INIT] Failed to create UDP socket. Error: " +
@@ -122,17 +123,39 @@ bool Receiver::addToBuffer(std::unique_ptr<packet> pkt) {
         return false;
     }
     if (this->isBufferFull()) {
-        LOG_WARNING("[ADD-TO-BUFFER] Buffer is full. Cannot add packet with SeqNo: " + std::to_string(pkt->seqNo));
+        LOG_WARNING(
+            "[ADD-TO-BUFFER] Buffer is full. Cannot add packet with SeqNo: " +
+            std::to_string(pkt->seqNo));
         return false;
     }
     uint32_t seqNo = pkt->seqNo;
     if (this->rxBuffer.find(seqNo) != this->rxBuffer.end()) {
-        LOG_WARNING("[ADD-TO-BUFFER] Packet with SeqNo: " + std::to_string(seqNo) + " already in buffer.");
+        LOG_WARNING("[ADD-TO-BUFFER] Packet with SeqNo: " +
+                    std::to_string(seqNo) + " already in buffer.");
         return false;
     }
     this->rxBuffer[seqNo] = std::move(pkt);
     LOG_INFO("[ADD-TO-BUFFER] Added packet to buffer. SeqNo: " + std::to_string(seqNo));
     return true;
+}
+
+void Receiver::drainBufferedPackets(std::ofstream& outFile) {
+    while (this->rxBuffer.find(this->expectedSeqNo) != this->rxBuffer.end()) {
+        auto& bufferedPkt = this->rxBuffer[this->expectedSeqNo];
+        
+        outFile.write(bufferedPkt->payload, bufferedPkt->payloadLen);
+        LOG_INFO("[RECEIVE-FILE] Wrote packet payload. SeqNo: " +
+                 std::to_string(this->expectedSeqNo) + " | Bytes: " + std::to_string(bufferedPkt->payloadLen));
+
+        bool isFin = (bufferedPkt->flag & FLAG_FIN) != 0;
+        this->rxBuffer.erase(this->expectedSeqNo);
+        this->expectedSeqNo++;
+
+        if (isFin) {
+            this->state = ReceieverState::CLOSED;
+            break;
+        }
+    }
 }
 
 bool Receiver::receiveFile() {
@@ -150,39 +173,53 @@ bool Receiver::receiveFile() {
              receiverStateToString(this->state) +
              "\n  Waiting for data packets");
 
-    auto pkt = receivePkt();
-    if (pkt == nullptr) {
-        LOG_ERROR("[RECEIVE-FILE] Failed to receive packet. State: " +
-                  receiverStateToString(this->state));
-        return false;
-    }
-
-    char recvPayload[MAX_PAYLOAD_SIZE];
-    memcpy(recvPayload, pkt->payload, pkt->payloadLen);
-    // TODO: Handle the checks on the packet waitForReadWithRetry
-    LOG_INFO("[RECEIVE-FILE] Packet received successfully.\n"
-             "  State: " +
-             receiverStateToString(this->state) +
-             "\n  SeqNo: " + std::to_string(pkt->seqNo) +
-             "\n  Payload size: " + std::to_string(pkt->payloadLen) +
-             " bytes"
-             "\n  Flag: " +
-             std::string(pkt->flag == FLAG_FIN ? "FIN" : "DATA"));
-
-    // Write the raw received data to output.txt to verify UDP transmission
     std::ofstream outFile("output.txt", std::ios::binary);
-    if (outFile.is_open()) {
-        outFile.write(recvPayload, pkt->payloadLen);
-        outFile.close();
-        LOG_INFO("[RECEIVE-FILE] File data written successfully.\n"
-                 "  Output file: output.txt\n"
-                 "  Bytes written: " +
-                 std::to_string(pkt->payloadLen));
-    } else {
+    if (!outFile.is_open()) {
         LOG_ERROR("[RECEIVE-FILE] Failed to open output.txt for writing");
         return false;
     }
 
+    while (this->state == ReceieverState::CONNECTED) {
+        auto pkt = receivePkt();
+        if (pkt == nullptr) {
+            LOG_ERROR("[RECEIVE-FILE] Failed to receive packet (timeout or "
+                      "error). State: " +
+                      receiverStateToString(this->state));
+            outFile.close();
+            return false;
+        }
+
+        uint32_t seqNo = pkt->seqNo;
+
+        // Case A: Duplicate Packet (too old)
+        if (seqNo < this->expectedSeqNo) {
+            LOG_WARNING("[RECEIVE-FILE] Duplicate packet received. SeqNo: " +
+                        std::to_string(seqNo) +
+                        " | Expected: " + std::to_string(this->expectedSeqNo));
+            this->sendAck(seqNo);
+            continue;
+        }
+
+        // Case B: Out-of-Window Packet (too new/invalid)
+        if (seqNo >= this->expectedSeqNo + RX_WINDOW_SIZE) {
+            LOG_WARNING(
+                "[RECEIVE-FILE] Out-of-window packet received. SeqNo: " +
+                std::to_string(seqNo) +
+                " | Expected: " + std::to_string(this->expectedSeqNo));
+            continue;
+        }
+
+        // Case C: Valid packet (within window). Add to buffer.
+        this->addToBuffer(std::move(pkt));
+
+        // Process contiguous packets starting from expectedSeqNo
+        this->drainBufferedPackets(outFile);
+
+        // Send cumulative ACK (which is expectedSeqNo - 1)
+        this->sendAck(this->expectedSeqNo - 1);
+    }
+
+    outFile.close();
     LOG_INFO("[RECEIVE-FILE] File reception completed successfully.\n"
              "  State: " +
              receiverStateToString(this->state));
@@ -227,20 +264,21 @@ bool Receiver::handshake() {
 
     const uint64_t TIMEOUT_MS = 1000;
     const uint8_t RETRIES = 10;
-    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, SYN_SEQNO, FLAG_SYN,
-                                 ReceieverState::SYN_RECV)) {
+    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, this->expectedSeqNo,
+                                 FLAG_SYN, ReceieverState::SYN_RECV)) {
         LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
                  "  State: " +
                  receiverStateToString(this->state) +
                  " -> SYN_RECV"
                  "\n  SeqNo: " +
-                 std::to_string(SYN_SEQNO) + "\n  Flag: SYN");
+                 std::to_string(this->expectedSeqNo) + "\n  Flag: SYN");
+        this->expectedSeqNo++;
     } else {
         return false;
     }
     auto sendPkt = makeEmptyPacket();
     sendPkt->flag = FLAG_SYN_ACK;
-    sendPkt->seqNo = SYN_SEQNO + 1;
+    sendPkt->seqNo = this->expectedSeqNo;
     LOG_INFO("[HANDSHAKE] Sending SYN-ACK response.\n"
              "  State: " +
              receiverStateToString(this->state) +
@@ -254,14 +292,15 @@ bool Receiver::handshake() {
     }
     this->state = ReceieverState::ACK_SENT;
 
-    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, SYN_SEQNO + 1, FLAG_ACK,
-                                 ReceieverState::CONNECTED)) {
-        LOG_INFO("[HANDSHAKE] Received valid SYN packet.\n"
+    if (this->waitAndUpdateState(TIMEOUT_MS, RETRIES, this->expectedSeqNo,
+                                 FLAG_ACK, ReceieverState::CONNECTED)) {
+        LOG_INFO("[HANDSHAKE] Received valid ACK packet.\n"
                  "  State: " +
                  receiverStateToString(this->state) +
-                 " -> SYN_RECV"
+                 " -> CONNECTED"
                  "\n  SeqNo: " +
-                 std::to_string(SYN_SEQNO + 1) + "\n  Flag: SYN");
+                 std::to_string(this->expectedSeqNo) + "\n  Flag: ACK");
+        this->expectedSeqNo++;
     } else {
         return false;
     }
