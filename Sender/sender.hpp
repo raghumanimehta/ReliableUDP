@@ -4,7 +4,7 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 #ifndef SENDER_HPP
 #define SENDER_HPP
 
-#include "../slidingWindow.hpp"
+#include "slidingWindow.hpp"
 #include <arpa/inet.h>
 #include <memory>
 #include <netinet/in.h>
@@ -14,35 +14,37 @@ Sender class. The class encapsulates the logic for sending the file using UDP.
 
 struct packet;
 
+constexpr size_t WINDOW_SIZE = 10;
+
 enum class SenderState : uint8_t {
-  IDLE = 0,
-  SYN_SENT = 1,
-  SYN_ACK = 2,
-  CONNECTED = 3,
-  CLOSING = 4,
-  CLOSED = 5
+    IDLE = 0,
+    SYN_SENT = 1,
+    SYN_ACK = 2,
+    CONNECTED = 3,
+    CLOSING = 4,
+    CLOSED = 5
 };
 
 class Sender {
-private:
-  struct sockaddr_in dst;
-  int socketFd;
-  SenderState state;
-  SlidingWindow window;
+  private:
+    struct sockaddr_in dst;
+    int socketFd;
+    SenderState state;
+    SlidingWindow window;
 
-  bool handshake();
-  bool waitForSynAck();
-  bool sendHandshakeAck();
-  bool sendTrackedPacket(std::unique_ptr<packet> &pkt);
-  bool waitForWindowProgress();
-  bool drainOutstandingPackets();
+    bool handshake();
+    bool waitForSynAck();
+    bool sendHandshakeAck();
+    bool sendTrackedPacket(std::unique_ptr<packet> &pkt);
+    bool waitForWindowProgress();
+    bool drainOutstandingPackets();
 
-public:
-  Sender(const std::string &destIp, const int port);
+  public:
+    Sender(const std::string &destIp, const int port);
 
-  ~Sender();
+    ~Sender();
 
-  bool sendFile(const std::vector<char> &fileData);
+    bool sendFile(const std::vector<char> &fileData);
 };
 
 #endif

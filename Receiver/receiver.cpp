@@ -102,6 +102,39 @@ unique_ptr<packet> Receiver::receivePkt() {
     return pkt;
 }
 
+bool Receiver::sendAck(uint32_t seqNo) {
+    auto ackPkt = makeEmptyPacket();
+    ackPkt->flag = FLAG_ACK;
+    ackPkt->seqNo = seqNo + 1;
+    LOG_INFO("[SEND-ACK] Sending ACK packet. State: " +
+             receiverStateToString(this->state) +
+             " | AckSeqNo: " + std::to_string(ackPkt->seqNo));
+    return sendPacket(this->socketFd, this->origin, *ackPkt);
+}
+
+bool Receiver::isBufferFull() const {
+    return this->rxBuffer.size() >= RX_WINDOW_SIZE;
+}
+
+bool Receiver::addToBuffer(std::unique_ptr<packet> pkt) {
+    if (pkt == nullptr) {
+        LOG_ERROR("[ADD-TO-BUFFER] Cannot add null packet to buffer.");
+        return false;
+    }
+    if (this->isBufferFull()) {
+        LOG_WARNING("[ADD-TO-BUFFER] Buffer is full. Cannot add packet with SeqNo: " + std::to_string(pkt->seqNo));
+        return false;
+    }
+    uint32_t seqNo = pkt->seqNo;
+    if (this->rxBuffer.find(seqNo) != this->rxBuffer.end()) {
+        LOG_WARNING("[ADD-TO-BUFFER] Packet with SeqNo: " + std::to_string(seqNo) + " already in buffer.");
+        return false;
+    }
+    this->rxBuffer[seqNo] = std::move(pkt);
+    LOG_INFO("[ADD-TO-BUFFER] Added packet to buffer. SeqNo: " + std::to_string(seqNo));
+    return true;
+}
+
 bool Receiver::receiveFile() {
     LOG_INFO("[RECEIVE-FILE] Starting file reception.\n"
              "  State: " +
@@ -116,6 +149,13 @@ bool Receiver::receiveFile() {
              "  State: " +
              receiverStateToString(this->state) +
              "\n  Waiting for data packets");
+
+    auto pkt = receivePkt();
+    if (pkt == nullptr) {
+        LOG_ERROR("[RECEIVE-FILE] Failed to receive packet. State: " +
+                  receiverStateToString(this->state));
+        return false;
+    }
 
     char recvPayload[MAX_PAYLOAD_SIZE];
     memcpy(recvPayload, pkt->payload, pkt->payloadLen);

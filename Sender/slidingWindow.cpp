@@ -1,6 +1,6 @@
 #include "slidingWindow.hpp"
-#include "logger.cpp"
-#include "packet.hpp"
+#include "../logger.cpp"
+#include "../packet.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -12,10 +12,11 @@
 static const std::chrono::milliseconds TIMEOUT_MS =
     std::chrono::milliseconds(1000);
 
-SlidingWindow::SlidingWindow(uint32_t base)
+SlidingWindow::SlidingWindow(uint32_t base, size_t window_size)
     : slots(), base(base), nextSeqNo(0),
       timerStart(std::chrono::steady_clock::now()), isTimerRunning(false) {
-    this->slots.reserve(WINDOW_SIZE);
+    this->window_size = window_size;
+    this->slots.reserve(window_size);
 }
 
 SlidingWindow::~SlidingWindow() { slots.clear(); }
@@ -31,7 +32,7 @@ bool SlidingWindow::add(WindowSlot w) {
         return false;
     }
 
-    if (this->slots.size() >= WINDOW_SIZE) {
+    if (this->slots.size() >= this->window_size) {
         return false;
     }
 
@@ -45,8 +46,8 @@ bool SlidingWindow::add(WindowSlot w) {
             isTimerRunning = true;
         }
         nextSeqNo++;
-        LOG_INFO("Added packet with sequence number: " +
-                 std::to_string(w.pkt->seqNo) + " to window");
+        LOG_INFO("Added packet with sequence number: " + std::to_string(seqNo) +
+                 " to window");
         return true;
     }
     LOG_WARNING("pkt with seqNo: " + std::to_string(w.pkt->seqNo) +

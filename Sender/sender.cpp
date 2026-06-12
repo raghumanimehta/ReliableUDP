@@ -44,7 +44,7 @@ static std::string senderStateToString(SenderState s) {
 }
 
 Sender::Sender(const std::string &destIp, const int port)
-    : socketFd(-1), state(SenderState::IDLE), window(0) {
+    : socketFd(-1), state(SenderState::IDLE), window(0, WINDOW_SIZE) {
     socketFd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socketFd == -1) {
         LOG_ERROR("[SENDER-INIT] Failed to create UDP socket. Error: " +
