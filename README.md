@@ -1,13 +1,18 @@
 # Reliable UDP
 
+This is an educational implementation intended to explore reliable transport
+concepts, not a production replacement for TCP or QUIC.
+
 ## Goal
-- Implement a reliable file transfer system over **UDP** using custom logic to handle:
+- Implement a reliable file transfer system over **UDP** using custom logic
+  designed to handle:
   - Packet loss
   - Reordering
   - Duplicate suppression
 
-## Stretch Goal
-- Develop a simple **web-based** or **desktop UI** to improve usability and allow file transfers via a graphical interface.
+The implementation has been validated under normal local transfer conditions.
+Loss and reordering behavior are part of the protocol design, but still need
+dedicated simulated-network testing.
 
 ---
 
@@ -24,6 +29,8 @@
 
 ### Testing and Validation
 - [x] Test file transfers under normal conditions
+- [ ] Simulate packet loss and validate reliability
+- [ ] Simulate packet reordering and validate receiver buffering
 
 ### 🧰 Stretch Features
 - [x] Basic CLI interface to choose file and mode
@@ -40,7 +47,7 @@ Notes: retries/timeouts and seq verification are applied at each wait step; mism
 
 ---
 
-## Future Improvements / Missing Features
+## Limitations and Possible Extensions
 The custom UDP protocol currently implements window flow control, packet tracking, duplicate suppression, and retransmission timeouts. However, the following features are not yet present:
 - **Robust Connection Teardown (TIME_WAIT)**: Currently, the sender exits upon receiving the final ACK, and the receiver exits immediately after sending the final ACK. If the final ACK is lost, the sender will timeout and retransmit FIN indefinitely to an exited receiver. A proper TIME_WAIT state is needed.
 - **Dynamic Timeout Estimation (RTT/RTO)**: Retransmission timeout is currently fixed (1000ms). Adaptive timeout based on measured Round-Trip Time (RTT) would improve performance.
