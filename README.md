@@ -24,14 +24,10 @@
 
 ### Testing and Validation
 - [x] Test file transfers under normal conditions
-- [ ] Simulate packet loss and validate reliability
-- [ ] Log transfer statistics (e.g., number of packets sent, retransmissions)
 
 ### 🧰 Stretch Features
-- [ ] Basic CLI interface to choose file and mode
-- [ ] Web-based or desktop GUI for file selection and status display
-- [ ] Dockerize for isolated testing
- 
+- [x] Basic CLI interface to choose file and mode
+
 ### Handshake protocol 
 Compact alternating 3‑way handshake (packet, seq, and state changes):
 
@@ -52,3 +48,78 @@ The custom UDP protocol currently implements window flow control, packet trackin
 - **Fast Retransmit**: Sender only retransmits on timeout. Implementing Fast Retransmit on triple duplicate ACKs would allow quicker recovery from drops.
 - **File Metadata Transmission**: Handshake or a metadata block should transmit filename and size so the receiver doesn't hardcode the output to `output.txt`.
 - **Application-Level Checksum**: Explicit header checksums (like CRC32) for end-to-end data integrity validation.
+
+### Run this application
+
+**Note**: Using this over a public Wi-Fi network may not work because inbound
+UDP packets or device-to-device traffic are often blocked by default.
+
+That being said, you can play around with this application using a personal
+Wi-Fi network, a phone hotspot, a VPN such as Tailscale, or two separate
+terminal windows on the same host.
+
+#### Build
+
+```bash
+make all
+```
+
+This creates two executables:
+
+```text
+bin/receiver
+bin/sender
+```
+
+To remove generated binaries and object files:
+
+```bash
+make clean
+```
+
+#### Run on the same machine
+
+Open two terminal windows from the project root.
+
+In the first terminal, start the receiver:
+
+```bash
+./bin/receiver
+```
+
+The receiver listens on UDP port `8080` and writes the received file to
+`output.txt` in the directory where it was launched.
+
+In the second terminal, send a file:
+
+```bash
+./bin/sender tests/large_story.txt
+```
+
+When no destination IP is provided, the sender defaults to `127.0.0.1`.
+
+#### Run across two machines
+
+On the receiver machine:
+
+```bash
+./bin/receiver
+```
+
+The receiver logs the IP address and port that the sender should use. On the
+sender machine, pass that IP address explicitly:
+
+```bash
+./bin/sender tests/large_story.txt <receiver_ip>
+```
+
+For example:
+
+```bash
+./bin/sender tests/large_story.txt 192.168.1.23
+```
+
+If the sender repeatedly times out while waiting for `SYN-ACK`, first verify
+that localhost works, then check that both machines are on a network that allows
+device-to-device UDP traffic and that the receiver machine allows inbound UDP on
+port `8080`.
